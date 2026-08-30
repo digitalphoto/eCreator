@@ -18,7 +18,7 @@
       <div class="brand-icon">📸</div>
       <div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div>
     </div>
-    <div class="badge">v2.0 Professional</div>
+    <div class="badge">v2.1 Studio Retouch</div>
   </header>
 
   <div class="global-toolbar" id="globalToolbar">
@@ -87,6 +87,15 @@
           <div class="field"><label for="suitUpload">Upload Suit / PNG Design</label><input id="suitUpload" type="file" accept="image/png,image/webp,image/*"></div>
         </div>
         <div class="mini-actions"><button id="addSuitBtn" type="button" class="ghost-btn">＋ Add Suit</button><button id="duplicateLayerBtn" type="button" class="ghost-btn">⧉ Duplicate Layer</button></div>
+      </div>
+
+      <div class="pro-card retouch-card">
+        <div class="section-title-row"><div><strong>Auto Studio Retouch</strong><small>Natural spot, shadow, tone & noise cleanup while preserving identity</small></div><label class="switch mini-switch"><input id="autoRetouch" type="checkbox" checked><span class="slider"></span></label></div>
+        <div class="field-grid two">
+          <div class="field"><label for="retouchStrength">Retouch Strength</label><select id="retouchStrength"><option value="light">Light</option><option value="normal" selected>Normal</option><option value="strong">Strong</option></select></div>
+          <div class="field"><label>Compare</label><div class="mini-actions retouch-actions"><button id="beforeBtn" type="button" class="ghost-btn">Before</button><button id="afterBtn" type="button" class="ghost-btn active">After</button></div></div>
+        </div>
+        <div id="qualityNotice" class="quality-notice hidden"></div>
       </div>
 
       <div class="switch-row"><div><strong>Auto Studio Enhance</strong><small>Brightness, contrast & clarity</small></div><label class="switch"><input id="autoEnhance" type="checkbox" checked><span class="slider"></span></label></div>
