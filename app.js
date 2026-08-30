@@ -170,3 +170,97 @@ $('downloadJpg').onclick=()=>dl(exportSingle('image/jpeg'),`digital-photo-${outp
 $('resetBtn').addEventListener('click',()=>{sourceFile=null;sourceDataUrl=null;originalImageEl=null;removedBlob=null;subjectObj=null;backgroundObj=null;backgroundRect=null;cropGuide=null;cropTarget=null;history=[];historyIndex=-1;if(fabricCanvas){fabricCanvas.dispose();fabricCanvas=null}$('photoInput').value='';$('selectedFileName').textContent='No photo selected';$('bgUpload').value='';$('removeBg').checked=false;$('nepalPreset').value='manual';$('borderEnabled').checked=false;$('borderSize').value='1';$('borderColor').value='#ffffff';$('borderHex').value='#ffffff';updateBorderPreview();document.querySelectorAll('.crop-only').forEach(b=>b.classList.add('hidden'));$('placeholder').classList.remove('hidden');$('canvasWrap').classList.add('hidden');$('sheetPreviewWrap').classList.add('hidden');$('previewStage').classList.remove('hidden');$('resultTabs').classList.add('hidden');$('actions').classList.add('hidden');$('backEditorBtn').classList.add('hidden');$('createBtn').disabled=true;$('resetBtn').disabled=true;$('layersList').innerHTML='<div class="empty-layers">No layers yet</div>';updateHistoryButtons();status('Select a photo to begin.')});
 
 updateInfo();updateHistoryButtons();
+
+/* ===== v2.0 Professional Studio additions ===== */
+const professionalPresets = [
+  {id:'np35x45',name:'Nepal General',doc:'Passport / Form',w:35,h:45},
+  {id:'common35x45',name:'Common 35×45',doc:'ID / Visa',w:35,h:45},
+  {id:'common30x40',name:'Common 30×40',doc:'Form Photo',w:30,h:40},
+  {id:'common3x4',name:'3×4 cm',doc:'Common Size',w:30,h:40},
+  {id:'us2x2',name:'USA 2×2 in',doc:'Passport / Visa',w:50.8,h:50.8},
+  {id:'india35x45',name:'India 35×45',doc:'Passport Type',w:35,h:45},
+  {id:'japan35x45',name:'Japan 35×45',doc:'Visa Type',w:35,h:45},
+  {id:'au35x45',name:'Australia 35×45',doc:'Passport Type',w:35,h:45},
+  {id:'ca50x70',name:'Canada 50×70',doc:'Passport Type',w:50,h:70},
+  {id:'cn33x48',name:'China 33×48',doc:'Visa / ID',w:33,h:48},
+  {id:'eu35x45',name:'Europe 35×45',doc:'Schengen Type',w:35,h:45},
+  {id:'square50',name:'50×50 mm',doc:'Square ID',w:50,h:50}
+];
+let activeProfessionalPreset = 'np35x45';
+let suitObj = null;
+
+function renderProfessionalPresets(query=''){
+  const list=$('sizePresetList'); if(!list) return;
+  const q=String(query||'').trim().toLowerCase();
+  const items=professionalPresets.filter(p=>!q || `${p.name} ${p.doc} ${p.w}x${p.h}`.toLowerCase().includes(q));
+  list.innerHTML='';
+  items.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='preset-chip'+(p.id===activeProfessionalPreset?' active':'');b.innerHTML=`<b>${p.name}</b><span>${p.w} × ${p.h} mm • ${p.doc}</span>`;b.onclick=()=>applyProfessionalPreset(p);list.appendChild(b)});
+  if(!items.length)list.innerHTML='<div class="empty-layers">No matching size. Use Custom Size.</div>';
+}
+function applyProfessionalPreset(p){
+  activeProfessionalPreset=p.id;$('activePresetBadge').textContent=p.name;
+  const exact=Object.entries(sizePresets).find(([,v])=>Math.abs(v[0]-p.w)<.05&&Math.abs(v[1]-p.h)<.05);
+  if(exact){$('photoSize').value=exact[0];$('customSizeBox').classList.add('hidden')}else{$('photoSize').value='custom';$('customWidth').value=p.w;$('customHeight').value=p.h;$('customSizeBox').classList.remove('hidden')}
+  updateInfo(); if(fabricCanvas)resizeCanvasKeepObjects(); renderProfessionalPresets($('sizeSearch')?.value||''); if(fabricCanvas)saveHistory();
+}
+$('sizeSearch')?.addEventListener('input',e=>renderProfessionalPresets(e.target.value));
+renderProfessionalPresets();
+
+function suitSvg(kind='black'){
+  const colors={black:['#151922','#f7f7f7','#222b3b'],navy:['#172b4d','#f8f8f8','#233c68'],gray:['#555b65','#fafafa','#69717d']};
+  const [jacket,shirt,lapel]=colors[kind]||colors.black;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 900"><path fill="${jacket}" d="M70 900V470c0-120 110-190 250-220l80 180 80-180c140 30 250 100 250 220v430z"/><path fill="${shirt}" d="M310 250h180l-35 290H345z"/><path fill="${lapel}" d="M320 250l80 180-120 130-85-235zm160 0l-80 180 120 130 85-235z"/><path fill="#b71922" d="M382 350h36l24 235-42 85-42-85z"/><path fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="5" d="M400 430v470"/></svg>`;
+}
+async function addSuitFromDataUrl(dataUrl,name='Suit / Design'){
+  if(!fabricCanvas){status('Select a photo first.','error');return}
+  const img=await imageFromUrl(dataUrl); const o=makeFabricImage(img,name,'suit');
+  const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.min(W/o.width,H/o.height)*1.06;o.set({scaleX:sc,scaleY:sc,left:W/2,top:H*.70,angle:0});o.setCoords();fabricCanvas.add(o);fabricCanvas.setActiveObject(o);suitObj=o;fabricCanvas.requestRenderAll();refreshLayers();saveHistory();status('Suit / design layer added. Drag, resize or rotate it in the preview.','ok');
+}
+async function addBuiltInSuit(){const kind=$('suitPreset')?.value;if(!kind||kind==='none'){status('Choose a built-in suit or upload a PNG design.','error');return}const data='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(suitSvg(kind));await addSuitFromDataUrl(data,`${kind[0].toUpperCase()+kind.slice(1)} Suit`)}
+$('addSuitBtn')?.addEventListener('click',addBuiltInSuit);
+$('suitUpload')?.addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const d=await fileToDataURL(f);await addSuitFromDataUrl(d,f.name)}catch(err){console.error(err);status('Suit/design image could not be loaded.','error')}});
+function duplicateActiveLayer(){if(!fabricCanvas)return;const o=fabricCanvas.getActiveObject();if(!o||o===backgroundRect||o===cropGuide){status('Select an editable layer to duplicate.','error');return}o.clone(cl=>{cl.set({left:(o.left||0)+18,top:(o.top||0)+18,name:(o.name||'Layer')+' Copy',layerType:o.layerType,selectable:true,evented:true});fabricCanvas.add(cl);fabricCanvas.setActiveObject(cl);cl.setCoords();fabricCanvas.requestRenderAll();refreshLayers();saveHistory();status('Layer duplicated.','ok')},['name','layerType','selectable','evented'])}
+$('duplicateLayerBtn')?.addEventListener('click',duplicateActiveLayer);
+
+$('guideToggle')?.addEventListener('change',e=>$('faceGuide')?.classList.toggle('hidden',!e.target.checked));
+document.querySelector('.nudge-grid')?.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!fabricCanvas)return;const o=activeEditable();if(!o)return;const step=Math.max(2,Math.round(fabricCanvas.width*.018));switch(b.dataset.nudge){case'up':o.top-=step;break;case'down':o.top+=step;break;case'left':o.left-=step;break;case'right':o.left+=step;break;case'center':o.set({left:fabricCanvas.width/2,top:fabricCanvas.height/2});break;case'scaleUp':o.scaleX*=1.05;o.scaleY*=1.05;break;case'scaleDown':o.scaleX*=.95;o.scaleY*=.95;break}o.setCoords();fabricCanvas.requestRenderAll();refreshLayers();saveHistory()});
+
+// Extend toolbar with duplicate action without replacing existing editor logic.
+document.querySelector('.editor-toolbar')?.addEventListener('click',e=>{const b=e.target.closest('button');if(b?.dataset.action==='duplicate'){e.stopImmediatePropagation();duplicateActiveLayer()}},true);
+
+function printSettings(){return {margin:Math.max(0,Number($('printMargin')?.value||5)),gap:Math.max(0,Number($('printGap')?.value||2.5)),cut:$('cutMarks')?.value!=='off'}}
+function drawCutMarks(ctx,x,y,w,h,dpi){const len=Math.max(8,mmToPx(2.5,dpi)),off=Math.max(2,mmToPx(.7,dpi));ctx.save();ctx.strokeStyle='#9aa4b2';ctx.lineWidth=Math.max(1,dpi/300);const segs=[[x-off,y,x-len,y],[x,y-off,x,y-len],[x+w+off,y,x+w+len,y],[x+w,y-off,x+w,y-len],[x-off,y+h,x-len,y+h],[x,y+h+off,x,y+h+len],[x+w+off,y+h,x+w+len,y+h],[x+w,y+h+off,x+w,y+h+len]];segs.forEach(a=>{ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(a[2],a[3]);ctx.stroke()});ctx.restore()}
+
+// Professional replacement for print layout: exact copies + configurable margin/gap/cut marks.
+renderSheet = async function(){
+  if(!fabricCanvas)return;cancelCrop(false);const single=await dataUrlToImage(exportSingle('image/png'));let [pw,ph]=paperPresets[$('paperSize').value];if($('orientation').value==='landscape')[pw,ph]=[ph,pw];
+  const dpi=outputDpi(),W=mmToPx(pw,dpi),H=mmToPx(ph,dpi),ps=printSettings(),gap=mmToPx(ps.gap,dpi),margin=mmToPx(ps.margin,dpi),iw=single.width,ih=single.height;
+  const cols=Math.max(1,Math.floor((W-margin*2+gap)/(iw+gap))),rows=Math.max(1,Math.floor((H-margin*2+gap)/(ih+gap))),capacity=Math.max(1,cols*rows);$('capacityBadge').textContent=`Capacity ${capacity}`;
+  const requested=$('copies').value==='auto'?capacity:Math.max(1,Number($('copies').value)||1),pages=Math.ceil(requested/capacity),pageGap=Math.max(8,Math.round(dpi/10));
+  const cvs=$('sheetCanvas'),c=cvs.getContext('2d');cvs.width=W;cvs.height=H*pages+pageGap*(pages-1);c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.fillStyle='#e9edf3';c.fillRect(0,0,cvs.width,cvs.height);let drawn=0;
+  for(let p=0;p<pages;p++){const pageY=p*(H+pageGap);c.fillStyle='#fff';c.fillRect(0,pageY,W,H);const count=Math.min(capacity,requested-drawn),usedCols=Math.min(cols,count),usedRows=Math.ceil(count/usedCols),usedW=usedCols*iw+(usedCols-1)*gap,usedH=usedRows*ih+(usedRows-1)*gap,sx=(W-usedW)/2,sy=pageY+(H-usedH)/2;
+    for(let n=0;n<count;n++){const x=n%usedCols,y=Math.floor(n/usedCols),dx=sx+x*(iw+gap),dy=sy+y*(ih+gap);c.drawImage(single,dx,dy);c.strokeStyle='#d5d8df';c.lineWidth=Math.max(1,dpi/300);c.strokeRect(dx,dy,iw,ih);if(ps.cut)drawCutMarks(c,dx,dy,iw,ih,dpi);drawn++}}
+  status(`${requested} photo(s) arranged exactly as selected • ${dpi} DPI • margin ${ps.margin}mm • gap ${ps.gap}mm${pages>1?` • ${pages} pages`:''}.`,'ok')
+};
+['printMargin','printGap','cutMarks'].forEach(id=>$(id)?.addEventListener('change',()=>{if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()}));
+
+async function canvasToTargetJpegDataUrl(canvas,targetKb){
+  if(!targetKb)return canvas.toDataURL('image/jpeg',.96);let lo=.25,hi=.98,best=canvas.toDataURL('image/jpeg',lo);
+  for(let i=0;i<9;i++){const q=(lo+hi)/2,data=canvas.toDataURL('image/jpeg',q),kb=Math.round((data.length-data.indexOf(',')-1)*.75/1024);if(kb<=targetKb){best=data;lo=q}else hi=q}
+  return best;
+}
+$('downloadWebJpg')?.addEventListener('click',async()=>{if(!fabricCanvas)return;const url=exportSingle('image/png');const img=await dataUrlToImage(url),c=document.createElement('canvas');c.width=img.width;c.height=img.height;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0);const target=Number($('targetKb')?.value||0),data=await canvasToTargetJpegDataUrl(c,target);dl(data,`digital-photo-web${target?`-${target}kb`:''}.jpg`);status(target?`Web JPG created with target ≤ ${target} KB where image content allows.`:'High-quality Web JPG created.','ok')});
+
+// Upgrade layer icons after original refresh routine runs.
+const _refreshLayersV2=refreshLayers;
+refreshLayers=function(){_refreshLayersV2();document.querySelectorAll('.layer-item').forEach(row=>{const name=row.querySelector('.layer-name')?.textContent||'';if(/suit|design/i.test(name)){row.dataset.layer='suit';const t=row.querySelector('.layer-thumb');if(t)t.textContent='👔'}})};
+
+// Preserve suit reference after undo/redo JSON restore.
+const _relinkObjectsV2=relinkObjects;
+relinkObjects=function(){_relinkObjectsV2();suitObj=(fabricCanvas?.getObjects()||[]).find(o=>o.layerType==='suit')||null};
+
+// Better UI state for professional controls.
+const _uiStateV2=uiState;
+uiState=function(){return {..._uiStateV2(),printMargin:$('printMargin')?.value,printGap:$('printGap')?.value,cutMarks:$('cutMarks')?.value,targetKb:$('targetKb')?.value,guideToggle:$('guideToggle')?.checked,suitPreset:$('suitPreset')?.value}};
+
+window.addEventListener('resize',()=>{if($('guideToggle'))$('faceGuide')?.classList.toggle('hidden',!$('guideToggle').checked)});
