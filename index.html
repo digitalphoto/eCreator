@@ -14,9 +14,20 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand-wrap"><div class="brand-icon">📸</div><div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div></div>
-    <div class="badge">v1.1.1</div>
+    <div class="brand-wrap">
+      <div class="brand-icon">📸</div>
+      <div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div>
+    </div>
+    <div class="badge">v1.2</div>
   </header>
+
+  <div class="global-toolbar" id="globalToolbar">
+    <button id="backEditorBtn" class="tool-btn hidden" title="Back to Editor">← Back to Editor</button>
+    <button id="undoBtn" class="tool-btn" disabled title="Undo (Ctrl+Z)">↶ Undo</button>
+    <button id="redoBtn" class="tool-btn" disabled title="Redo (Ctrl+Y / Ctrl+Shift+Z)">↷ Redo</button>
+    <span class="toolbar-spacer"></span>
+    <span class="shortcut-note">Ctrl+Z Undo • Ctrl+Y Redo</span>
+  </div>
 
   <main class="studio-shell">
     <aside class="panel controls-panel">
@@ -34,6 +45,11 @@
         <div class="field"><label for="paperSize">Paper Size</label><select id="paperSize"><option value="4x6">4 × 6 inch</option><option value="5x7">5 × 7 inch</option><option value="6x8">6 × 8 inch</option><option value="8x10">8 × 10 inch</option><option value="a4">A4</option><option value="a5">A5</option></select></div>
       </div>
       <div id="customSizeBox" class="field-grid two hidden"><div class="field"><label>Width (mm)</label><input id="customWidth" type="number" min="10" max="200" value="35"></div><div class="field"><label>Height (mm)</label><input id="customHeight" type="number" min="10" max="200" value="45"></div></div>
+
+      <div class="field-grid two">
+        <div class="field"><label for="outputDpi">Output Quality</label><select id="outputDpi"><option value="300">Studio 300 DPI</option><option value="600">HD 600 DPI</option></select></div>
+        <div class="field"><label>Final Pixel Size</label><div id="pixelInfo" class="info-box">413 × 531 px</div></div>
+      </div>
 
       <div class="switch-row"><div><strong>Background Remover</strong><small>Remove background and create Subject layer</small></div><label class="switch"><input id="removeBg" type="checkbox"><span class="slider"></span></label></div>
 
@@ -54,7 +70,10 @@
       <div class="preview-head"><div><h2>Live Preview</h2><p id="previewInfo">35 × 45 mm • 300 DPI</p></div><button id="resetBtn" class="ghost-btn" disabled>Reset</button></div>
       <div class="editor-toolbar"><button data-action="centerH">↔ Center</button><button data-action="centerV">↕ Center</button><button data-action="fit">Fit</button><button data-action="fill">Fill</button><button data-action="rotateLeft">↶ 90°</button><button data-action="rotateRight">↷ 90°</button><button data-action="flipX">⇋ Flip</button><button data-action="forward">Bring Front</button><button data-action="backward">Send Back</button></div>
       <div class="preview-stage" id="previewStage"><div id="placeholder" class="placeholder"><div>🖼️</div><strong>Your photo preview will appear here</strong><small>Upload a portrait photo for best result</small></div><div id="canvasWrap" class="canvas-wrap hidden"><canvas id="editorCanvas"></canvas></div></div>
-      <div class="result-tabs hidden" id="resultTabs"><button class="tab active" data-tab="editor">Digital Photo</button><button class="tab" data-tab="sheet">Print Sheet</button></div><div id="sheetPreviewWrap" class="sheet-preview hidden"><canvas id="sheetCanvas"></canvas></div><div class="actions hidden" id="actions"><button id="downloadJpg" class="secondary-btn">Download JPG</button><button id="downloadPng" class="secondary-btn">Download PNG</button><button id="downloadSheet" class="secondary-btn">Download Print Sheet</button></div>
+
+      <div class="result-tabs hidden" id="resultTabs"><button class="tab active" data-tab="editor">Digital Photo</button><button class="tab" data-tab="sheet">Print Sheet</button></div>
+      <div id="sheetPreviewWrap" class="sheet-preview hidden"><canvas id="sheetCanvas"></canvas></div>
+      <div class="actions hidden" id="actions"><button id="downloadJpg" class="secondary-btn">Download JPG</button><button id="downloadPng" class="secondary-btn">Download PNG</button><button id="downloadSheet" class="secondary-btn">Download Print Sheet</button></div>
 
       <div class="layers-panel-inline"><div class="layers-title"><div><h3>Layers</h3><small>Select a layer, then drag / resize / rotate in preview</small></div></div><div id="layersList" class="layers-list"><div class="empty-layers">No layers yet</div></div></div>
     </section>
