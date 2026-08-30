@@ -18,7 +18,7 @@
       <div class="brand-icon">📸</div>
       <div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div>
     </div>
-    <div class="badge">v2.5 Smart Composite</div>
+    <div class="badge">v2.6 Pro Studio</div>
   </header>
 
   <div class="global-toolbar" id="globalToolbar">
@@ -97,7 +97,7 @@
         <div class="section-title-row"><div><strong>Auto Studio Retouch</strong><small>Natural spot, shadow, tone & noise cleanup while preserving identity</small></div><label class="switch mini-switch"><input id="autoRetouch" type="checkbox" checked><span class="slider"></span></label></div>
         <div class="field-grid two">
           <div class="field"><label for="retouchStrength">Retouch Strength</label><select id="retouchStrength"><option value="light">Light</option><option value="normal" selected>Normal</option><option value="strong">Strong</option></select></div>
-          <div class="field"><label>Compare</label><div class="mini-actions retouch-actions"><button id="beforeBtn" type="button" class="ghost-btn">Before</button><button id="afterBtn" type="button" class="ghost-btn active">After</button></div></div>
+          <div class="field"><label>Compare</label><div class="mini-actions retouch-actions"><button id="beforeBtn" type="button" class="ghost-btn">Before</button><button id="afterBtn" type="button" class="ghost-btn active">After</button><button id="compareSliderBtn" type="button" class="ghost-btn">⇆ Compare</button></div></div>
         </div>
         <div id="qualityNotice" class="quality-notice hidden"></div>
       </div>
@@ -123,6 +123,21 @@
       <div class="pro-card text-card">
         <div class="section-title-row"><div><strong>Name / Date on Photo</strong><small>Optional text for school, job or application photos</small></div><label class="switch mini-switch"><input id="textOverlayEnabled" type="checkbox"><span class="slider"></span></label></div>
         <div class="field-grid three"><div class="field"><label>Name / Text</label><input id="overlayName" type="text" maxlength="60" placeholder="Optional name"></div><div class="field"><label>Date</label><input id="overlayDate" type="text" maxlength="30" placeholder="YYYY-MM-DD"></div><div class="field"><label>Text Position</label><select id="overlayPosition"><option value="bottom">Bottom</option><option value="top">Top</option></select></div></div>
+      </div>
+
+
+      <div class="pro-card quality-card">
+        <div class="section-title-row"><div><strong>Studio Quality & Performance</strong><small>Automatic composition checks, processing mode & final master validation</small></div><span id="qualityScoreBadge" class="mini-badge">Ready</span></div>
+        <div class="field-grid two">
+          <div class="field"><label for="performanceMode">Processing Mode</label><select id="performanceMode"><option value="fast">Fast</option><option value="balanced" selected>Balanced</option><option value="quality">High Quality</option></select></div>
+          <div class="field"><label>Privacy / Processing</label><div class="info-box">Local editor • AI model runs in browser</div></div>
+        </div>
+        <div id="autoQualityChecks" class="quality-checks"><span>✓ Exact frame</span><span>✓ Background sync</span><span>✓ Master export</span></div>
+        <div class="mini-actions"><button id="autoComposeBtn" type="button" class="ghost-btn">◎ Auto Passport Position</button><button id="qualityCheckBtn" type="button" class="ghost-btn">✓ Quality Check</button><button id="lockMasterBtn" type="button" class="ghost-btn">🔒 Lock Final Master</button></div>
+      </div>
+      <div class="pro-card retouch-brush-card">
+        <div class="section-title-row"><div><strong>Manual Spot Cleanup</strong><small>Click a small blemish/spot on the photo to soften it locally</small></div><span class="mini-badge">Brush</span></div>
+        <div class="field-grid two"><div class="field"><label>Brush Size</label><input id="spotBrushSize" type="range" min="4" max="60" value="18"></div><div class="field"><label>Manual Cleanup</label><button id="spotBrushBtn" type="button" class="ghost-btn">🩹 Start Spot Brush</button></div></div>
       </div>
 
       <div class="pro-card print-card">
@@ -169,7 +184,9 @@
         <div id="processingProgressBar" class="processing-progress-bar"></div>
       </div>
       <div class="processing-meta"><strong id="processingPercent">0%</strong><span id="processingStage">Preparing…</span></div>
-      <small class="processing-note">Please do not refresh, close the page, or click other controls until processing is complete.</small>
+      <div class="processing-time"><span id="processingElapsed">0s</span><span id="processingHint">Preparing AI…</span></div>
+      <button id="cancelProcessingBtn" type="button" class="processing-cancel">Cancel</button>
+      <small class="processing-note">Other controls stay locked while processing. The first AI run may take longer while the model loads.</small>
     </div>
   </div>
 
