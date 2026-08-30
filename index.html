@@ -18,7 +18,7 @@
       <div class="brand-icon">📸</div>
       <div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div>
     </div>
-    <div class="badge">v2.2 Precision Studio</div>
+    <div class="badge">v2.3 Processing UX</div>
   </header>
 
   <div class="global-toolbar" id="globalToolbar">
@@ -159,5 +159,19 @@
   </main>
 
   <footer><span>Designed by: <strong>Nirajan Aryal</strong></span><span class="sep">|</span><a href="tel:9851113811">9851113811</a><span class="sep">|</span><a class="facebook-link" href="https://www.facebook.com/nirajan.aryal.92" target="_blank" rel="noopener noreferrer" aria-label="Facebook profile"><svg class="facebook-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22 12.07C22 6.51 17.52 2 12 2S2 6.51 2 12.07C2 17.09 5.66 21.25 10.44 22v-7.03H7.9v-2.9h2.54V9.86c0-2.52 1.49-3.91 3.77-3.91 1.09 0 2.23.2 2.23.2v2.47h-1.25c-1.24 0-1.63.77-1.63 1.56v1.89h2.77l-.44 2.9h-2.33V22C18.34 21.25 22 17.09 22 12.07Z"/></svg><span>Facebook</span></a></footer>
+
+  <div id="processingOverlay" class="processing-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="processingTitle" aria-describedby="processingMessage">
+    <div class="processing-card">
+      <div class="processing-spinner" aria-hidden="true"></div>
+      <h3 id="processingTitle">Processing Photo</h3>
+      <p id="processingMessage">Please wait while your photo is being processed…</p>
+      <div class="processing-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="processingProgressBar" class="processing-progress-bar"></div>
+      </div>
+      <div class="processing-meta"><strong id="processingPercent">0%</strong><span id="processingStage">Preparing…</span></div>
+      <small class="processing-note">Please do not refresh, close the page, or click other controls until processing is complete.</small>
+    </div>
+  </div>
+
 </body>
 </html>
