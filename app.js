@@ -243,7 +243,7 @@ function applyProfessionalPreset(p){
   activeProfessionalPreset=p.id;$('activePresetBadge').textContent=p.name;
   const exact=Object.entries(sizePresets).find(([,v])=>Math.abs(v[0]-p.w)<.05&&Math.abs(v[1]-p.h)<.05);
   if(exact){$('photoSize').value=exact[0];$('customSizeBox').classList.add('hidden')}else{$('photoSize').value='custom';$('customWidth').value=p.w;$('customHeight').value=p.h;$('customSizeBox').classList.remove('hidden')}
-  updateInfo(); if(fabricCanvas)resizeCanvasKeepObjects(); renderProfessionalPresets($('sizeSearch')?.value||''); if(fabricCanvas)saveHistory();
+  updateInfo(); if(fabricCanvas)rebuildCanvasKeepObjects(); renderProfessionalPresets($('sizeSearch')?.value||''); if(fabricCanvas)saveHistory();
 }
 $('sizeSearch')?.addEventListener('input',e=>renderProfessionalPresets(e.target.value));
 renderProfessionalPresets();
@@ -325,3 +325,121 @@ const _relinkObjectsV21=relinkObjects;relinkObjects=function(){_relinkObjectsV21
 const _refreshLayersV21=refreshLayers;refreshLayers=function(){_refreshLayersV21();document.querySelectorAll('.layer-item').forEach(row=>{if(/Photo Edge Border/i.test(row.querySelector('.layer-name')?.textContent||''))row.remove()})};
 const _bindCanvasEventsV21=bindCanvasEvents;bindCanvasEvents=function(){_bindCanvasEventsV21();['object:moving','object:scaling','object:rotating','object:skewing'].forEach(ev=>fabricCanvas.on(ev,e=>{if(e.target===subjectObj)syncPhotoBorder()}));fabricCanvas.on('object:modified',e=>{if(e.target===subjectObj)syncPhotoBorder()});};
 const _deleteActiveLayerV21=deleteActiveLayer;deleteActiveLayer=function(){const o=fabricCanvas?.getActiveObject();_deleteActiveLayerV21();if(o===subjectObj||!subjectObj){if(photoBorderObj&&fabricCanvas){fabricCanvas.remove(photoBorderObj);photoBorderObj=null;fabricCanvas.requestRenderAll()}}};
+
+/* ===== v2.2 Precision Frame + Pi7-inspired workflow additions ===== */
+// Important: final photo dimensions never grow because of the border.
+// The border is drawn INSIDE the exact selected photo size.
+outputDpi=function(){
+  const v=$('outputDpi')?.value||'300';
+  return v==='custom'?Math.max(72,Math.min(1200,Number($('customDpi')?.value||300))):Number(v||300);
+};
+function customSizeToMm(v,unit){
+  v=Math.max(.01,Number(v)||0);
+  if(unit==='cm')return v*10;
+  if(unit==='inch')return v*25.4;
+  if(unit==='px')return v/outputDpi()*25.4;
+  return v;
+}
+photoSize=function(){
+  if($('photoSize')?.value!=='custom')return sizePresets[$('photoSize').value];
+  const u=$('customUnit')?.value||'mm';
+  return [customSizeToMm($('customWidth')?.value||35,u),customSizeToMm($('customHeight')?.value||45,u)];
+};
+
+// Normal uploaded photographs cover the complete final frame. A true cut-out
+// subject remains fitted inside the frame because its background is transparent.
+placeSubject=function(obj){
+  if(!fabricCanvas||!obj)return;
+  const W=fabricCanvas.width,H=fabricCanvas.height;
+  const isCutout=!!removedBlob;
+  const sc=isCutout?Math.min(W/obj.width,H/obj.height)*.92:Math.max(W/obj.width,H/obj.height);
+  obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0});obj.setCoords();
+};
+
+function setBackgroundMode(){
+  if(!backgroundRect)return;
+  const transparent=$('bgMode')?.value==='transparent';
+  backgroundRect.set({fill:transparent?'rgba(0,0,0,0)':($('bgColor')?.value||'#ffffff')});
+  fabricCanvas?.requestRenderAll();
+  if(!restoringHistory)saveHistory();
+}
+$('bgMode')?.addEventListener('change',()=>{setBackgroundMode();if(!$('sheetPreviewWrap')?.classList.contains('hidden'))renderSheet()});
+
+// Preview border follows the FINAL frame, not the source image object.
+syncPhotoBorder=function(){
+  if(!fabricCanvas)return;
+  removeLegacySubjectStroke();
+  const enabled=!!($('borderEnabled')?.checked&&borderSizeMm()>0);
+  if(!enabled){if(photoBorderObj){fabricCanvas.remove(photoBorderObj);photoBorderObj=null}fabricCanvas.requestRenderAll();return}
+  const [mmW]=photoSize(),px=Math.max(1,(fabricCanvas.width/mmW)*borderSizeMm()),color=$('borderColor')?.value||'#ffffff',W=fabricCanvas.width,H=fabricCanvas.height;
+  if(!photoBorderObj){photoBorderObj=new Fabric.Rect({name:'Final Photo Edge Border',layerType:'photoBorder',fill:'transparent',selectable:false,evented:false,originX:'center',originY:'center',strokeUniform:true});fabricCanvas.add(photoBorderObj)}
+  // Stroke is centered; shrink the rectangle by one stroke width so 100% of it remains inside the frame.
+  photoBorderObj.set({left:W/2,top:H/2,width:Math.max(1,W-px),height:Math.max(1,H-px),scaleX:1,scaleY:1,angle:0,flipX:false,flipY:false,stroke:color,strokeWidth:px,visible:true});
+  photoBorderObj.setCoords();fabricCanvas.bringToFront(photoBorderObj);fabricCanvas.requestRenderAll();
+};
+
+// Enhance now includes a controlled sharpness pass.
+applyEnhance=function(record=true){
+  if(!subjectObj)return;
+  const filters=[];
+  if($('autoEnhance')?.checked){
+    filters.push(new Fabric.Image.filters.Brightness({brightness:(Number($('brightness')?.value||100)-100)/100}));
+    filters.push(new Fabric.Image.filters.Contrast({contrast:(Number($('contrast')?.value||100)-100)/100}));
+    filters.push(new Fabric.Image.filters.Saturation({saturation:(Number($('saturation')?.value||100)-100)/100}));
+    const sh=Math.max(0,Math.min(100,Number($('sharpness')?.value||0)))/100;
+    if(sh>.01){const a=.20+sh*.55;filters.push(new Fabric.Image.filters.Convolute({matrix:[0,-a,0,-a,1+4*a,-a,0,-a,0]}))}
+  }
+  subjectObj.filters=filters;subjectObj.applyFilters();fabricCanvas?.requestRenderAll();if(record)saveHistory();
+};
+$('sharpness')?.addEventListener('input',()=>applyEnhance(true));
+
+function overlayTextOnCanvas(ctx,w,h,dpi){
+  if(!$('textOverlayEnabled')?.checked)return;
+  const name=($('overlayName')?.value||'').trim(),date=($('overlayDate')?.value||'').trim();
+  const text=[name,date].filter(Boolean).join(' • ');if(!text)return;
+  const barH=Math.max(mmToPx(6,dpi),Math.round(h*.085)),top=$('overlayPosition')?.value==='top',y=top?0:h-barH;
+  ctx.save();ctx.fillStyle='rgba(255,255,255,.92)';ctx.fillRect(0,y,w,barH);ctx.fillStyle='#111827';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`600 ${Math.max(12,Math.round(barH*.38))}px Arial, sans-serif`;ctx.fillText(text,w/2,y+barH/2,w-Math.max(12,Math.round(w*.05)));ctx.restore();
+}
+
+// Exact digital photo export: no external background strip, no outside padding.
+exportSingle=function(type='image/png'){
+  if(!fabricCanvas)return null;
+  cancelCrop(false);syncPhotoBorder();
+  const [mmW,mmH]=photoSize(),dpi=outputDpi(),contentW=mmToPx(mmW,dpi),contentH=mmToPx(mmH,dpi);
+  const active=fabricCanvas.getActiveObject();fabricCanvas.discardActiveObject();
+  const borderWasVisible=photoBorderObj?.visible!==false;if(photoBorderObj)photoBorderObj.visible=false;
+  fabricCanvas.requestRenderAll();
+  const inner=fabricCanvas.toCanvasElement(contentW/fabricCanvas.width,{enableRetinaScaling:false});
+  if(photoBorderObj)photoBorderObj.visible=borderWasVisible;
+  const out=document.createElement('canvas');out.width=contentW;out.height=contentH;const alpha=type!=='image/jpeg',c=out.getContext('2d',{alpha});c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';
+  if(type==='image/jpeg'||$('bgMode')?.value!=='transparent'){c.fillStyle=type==='image/jpeg'&&$('bgMode')?.value==='transparent'?'#ffffff':($('bgColor')?.value||'#ffffff');c.fillRect(0,0,contentW,contentH)}
+  c.drawImage(inner,0,0,contentW,contentH);
+  if($('borderEnabled')?.checked&&borderSizeMm()>0){const bw=Math.max(1,mmToPx(borderSizeMm(),dpi));c.save();c.strokeStyle=$('borderColor')?.value||'#ffffff';c.lineWidth=bw;c.strokeRect(bw/2,bw/2,contentW-bw,contentH-bw);c.restore()}
+  overlayTextOnCanvas(c,contentW,contentH,dpi);
+  if(active){fabricCanvas.setActiveObject(active)}fabricCanvas.requestRenderAll();
+  return out.toDataURL(type,type==='image/jpeg'?.98:undefined);
+};
+
+// Exact print sheet: each copy is the finished photo itself. No automatic extra rectangle is drawn around it.
+renderSheet=async function(){
+  if(!fabricCanvas)return;cancelCrop(false);const single=await dataUrlToImage(exportSingle('image/png'));let [pw,ph]=paperPresets[$('paperSize').value];if($('orientation').value==='landscape')[pw,ph]=[ph,pw];
+  const dpi=outputDpi(),W=mmToPx(pw,dpi),H=mmToPx(ph,dpi),ps=printSettings(),gap=mmToPx(ps.gap,dpi),margin=mmToPx(ps.margin,dpi),iw=single.width,ih=single.height;
+  const cols=Math.max(1,Math.floor((W-margin*2+gap)/(iw+gap))),rows=Math.max(1,Math.floor((H-margin*2+gap)/(ih+gap))),capacity=Math.max(1,cols*rows);$('capacityBadge').textContent=`Capacity ${capacity}`;
+  const requested=$('copies').value==='auto'?capacity:Math.max(1,Number($('copies').value)||1),pages=Math.ceil(requested/capacity),pageGap=Math.max(8,Math.round(dpi/10));
+  const cvs=$('sheetCanvas'),c=cvs.getContext('2d');cvs.width=W;cvs.height=H*pages+pageGap*(pages-1);c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.fillStyle='#e9edf3';c.fillRect(0,0,cvs.width,cvs.height);let drawn=0;
+  for(let p=0;p<pages;p++){const pageY=p*(H+pageGap);c.fillStyle='#fff';c.fillRect(0,pageY,W,H);const count=Math.min(capacity,requested-drawn),usedCols=Math.min(cols,count),usedRows=Math.ceil(count/usedCols),usedW=usedCols*iw+(usedCols-1)*gap,usedH=usedRows*ih+(usedRows-1)*gap,sx=(W-usedW)/2,sy=pageY+(H-usedH)/2;
+    for(let n=0;n<count;n++){const x=n%usedCols,y=Math.floor(n/usedCols),dx=sx+x*(iw+gap),dy=sy+y*(ih+gap);c.drawImage(single,dx,dy,iw,ih);if(ps.cut)drawCutMarks(c,dx,dy,iw,ih,dpi);drawn++}}
+  status(`${requested} exact-size photo(s) • ${dpi} DPI • no outside photo padding • margin ${ps.margin}mm • gap ${ps.gap}mm${pages>1?` • ${pages} pages`:''}.`,'ok');
+};
+
+$('outputDpi')?.addEventListener('change',()=>{$('customDpiBox')?.classList.toggle('hidden',$('outputDpi').value!=='custom');updateInfo();syncPhotoBorder();if(!$('sheetPreviewWrap')?.classList.contains('hidden'))renderSheet()});
+$('customDpi')?.addEventListener('change',()=>{updateInfo();syncPhotoBorder();if(!$('sheetPreviewWrap')?.classList.contains('hidden'))renderSheet();saveHistory()});
+$('customUnit')?.addEventListener('change',()=>{rebuildCanvasKeepObjects();updateInfo()});
+['textOverlayEnabled','overlayName','overlayDate','overlayPosition'].forEach(id=>$(id)?.addEventListener('input',()=>{if(!$('sheetPreviewWrap')?.classList.contains('hidden'))renderSheet();saveHistory()}));
+
+// Extend saved UI state without changing older snapshots.
+const _uiStateV22=uiState;uiState=function(){return {..._uiStateV22(),customUnit:$('customUnit')?.value,customDpi:$('customDpi')?.value,bgMode:$('bgMode')?.value,sharpness:$('sharpness')?.value,textOverlayEnabled:$('textOverlayEnabled')?.checked,overlayName:$('overlayName')?.value,overlayDate:$('overlayDate')?.value,overlayPosition:$('overlayPosition')?.value}};
+
+// Recalculate preview border after resize/undo and keep transparent mode correct.
+const _rebuildCanvasKeepObjectsV22=rebuildCanvasKeepObjects;rebuildCanvasKeepObjects=function(record=true){_rebuildCanvasKeepObjectsV22(record);setBackgroundMode();syncPhotoBorder()};
+setBackgroundMode();updateInfo();syncPhotoBorder();
