@@ -1,178 +1,64 @@
-const $ = (id) => document.getElementById(id);
+const $ = id => document.getElementById(id);
 const DPI = 300;
-const photoInput = $('photoInput');
-const photoCanvas = $('photoCanvas');
-const ctx = photoCanvas.getContext('2d', { willReadFrequently:true });
-let sourceImage = null;
-let sourceBlob = null;
-let bgImage = null;
-let removedBgImage = null;
-let removedBgUrl = null;
-let removalPromise = null;
-let lastSingleCanvas = null;
-let lastSheetCanvas = null;
-let currentTab = 'single';
+const sizePresets={'35x45':[35,45],'51x51':[50.8,50.8],'25x30':[25,30],'30x40':[30,40],'33x48':[33,48],'50x50':[50,50]};
+const paperPresets={'4x6':[101.6,152.4],'5x7':[127,177.8],'6x8':[152.4,203.2],'8x10':[203.2,254],'a4':[210,297],'a5':[148,210]};
+const mmToPx=mm=>Math.round(mm/25.4*DPI);
+let fabricCanvas=null, sourceFile=null, sourceUrl=null, originalImageEl=null, subjectObj=null, backgroundObj=null, backgroundRect=null, removedBlob=null, removalBusy=false, sheetOutput=null;
 
-const sizePresets = {
-  '35x45':[35,45], '51x51':[50.8,50.8], '25x30':[25,30],
-  '30x40':[30,40], '33x48':[33,48], '50x50':[50,50]
-};
-const paperPresets = {
-  '4x6':[101.6,152.4], '5x7':[127,177.8], '6x8':[152.4,203.2],
-  '8x10':[203.2,254], 'a4':[210,297], 'a5':[148,210]
-};
-const mmToPx = mm => Math.round(mm / 25.4 * DPI);
+function photoSize(){return $('photoSize').value==='custom'?[Number($('customWidth').value)||35,Number($('customHeight').value)||45]:sizePresets[$('photoSize').value]}
+function editorDims(){const [w,h]=photoSize();const maxH=520,maxW=430,ratio=w/h;let H=maxH,W=H*ratio;if(W>maxW){W=maxW;H=W/ratio}return [Math.round(W),Math.round(H)]}
+function status(msg,type=''){const el=$('status');el.textContent=msg;el.className='status '+type}
+function updateInfo(){const [w,h]=photoSize();$('previewInfo').textContent=`${w} × ${h} mm • ${DPI} DPI`}
+function imageFromUrl(url){return new Promise((res,rej)=>{const i=new Image();i.crossOrigin='anonymous';i.onload=()=>res(i);i.onerror=rej;i.src=url})}
+function fitScale(img,w,h,mode='cover'){return mode==='contain'?Math.min(w/img.width,h/img.height):Math.max(w/img.width,h/img.height)}
 
-function getPhotoSize(){
-  if($('photoSize').value === 'custom') return [Number($('customWidth').value)||35, Number($('customHeight').value)||45];
-  return sizePresets[$('photoSize').value];
-}
-function setStatus(text, ok=false, error=false){
-  $('status').textContent=text;
-  $('status').style.color=error?'#c62828':(ok?'#0f8a4b':'#6b7280');
-}
-function updateInfo(){ const [w,h]=getPhotoSize(); $('previewInfo').textContent=`${w} × ${h} mm • ${DPI} DPI`; }
-function revokeRemovedBg(){
-  if(removedBgUrl) URL.revokeObjectURL(removedBgUrl);
-  removedBgUrl=null; removedBgImage=null; removalPromise=null;
-}
-function loadImageFromUrl(url){
-  return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=url;});
-}
+function initCanvas(){const [W,H]=editorDims();if(fabricCanvas)fabricCanvas.dispose();fabricCanvas=new fabric.Canvas('editorCanvas',{width:W,height:H,preserveObjectStacking:true,selection:false});fabricCanvas.on('selection:created',refreshLayers);fabricCanvas.on('selection:updated',refreshLayers);fabricCanvas.on('selection:cleared',refreshLayers);fabricCanvas.on('object:modified',refreshLayers);backgroundRect=new fabric.Rect({left:0,top:0,width:W,height:H,fill:$('bgColor').value,selectable:false,evented:false,name:'Background Color',layerType:'backgroundColor'});fabricCanvas.add(backgroundRect);fabricCanvas.sendToBack(backgroundRect);}
 
-photoInput.addEventListener('change', async e=>{
-  const file=e.target.files?.[0]; if(!file) return;
-  sourceBlob=file;
-  revokeRemovedBg();
-  const url=URL.createObjectURL(file);
-  try{
-    sourceImage=await loadImageFromUrl(url);
-    $('createBtn').disabled=false; $('resetBtn').disabled=false; $('placeholder').classList.add('hidden');
-    renderSingle(); setStatus('Photo loaded. Adjust settings or create digital photo.', true);
-    if($('removeBg').checked) await ensureBackgroundRemoved();
-  } finally { URL.revokeObjectURL(url); }
-});
+async function makeFabricImage(img,name,type){return new Promise(res=>{const obj=new fabric.Image(img,{name,layerType:type,transparentCorners:false,cornerColor:'#0b5ed7',cornerStrokeColor:'#fff',borderColor:'#0b5ed7',cornerSize:11,padding:2,centeredScaling:false});res(obj)})}
+function placeCover(obj){const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.max(W/obj.width,H/obj.height);obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,originX:'center',originY:'center',angle:0});obj.setCoords()}
+function placeSubject(obj){const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.min(W/obj.width,H/obj.height)*0.96;obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,originX:'center',originY:'center',angle:0});obj.setCoords()}
 
-$('bgUpload').addEventListener('change', async e=>{
-  const file=e.target.files?.[0]; if(!file){bgImage=null;renderSingle();return;}
-  const url=URL.createObjectURL(file);
-  try{ bgImage=await loadImageFromUrl(url); renderSingle(); }
-  finally{ URL.revokeObjectURL(url); }
-});
+async function setSubjectFromElement(img,name='Subject'){if(subjectObj)fabricCanvas.remove(subjectObj);subjectObj=await makeFabricImage(img,name,'subject');placeSubject(subjectObj);fabricCanvas.add(subjectObj);fabricCanvas.setActiveObject(subjectObj);applyEnhance();fabricCanvas.requestRenderAll();refreshLayers()}
 
-$('photoSize').addEventListener('change',()=>{$('customSizeBox').classList.toggle('hidden',$('photoSize').value!=='custom');updateInfo();renderSingle();});
-['customWidth','customHeight','paperSize','autoEnhance','brightness','contrast','sharpness'].forEach(id=>$(id).addEventListener('input',()=>{updateInfo();renderSingle();}));
-$('removeBg').addEventListener('change', async ()=>{
-  if($('removeBg').checked && sourceImage) await ensureBackgroundRemoved();
-  else renderSingle();
-});
-$('bgColor').addEventListener('input',()=>{$('bgHex').value=$('bgColor').value;renderSingle();});
-$('bgHex').addEventListener('change',()=>{if(/^#[0-9a-fA-F]{6}$/.test($('bgHex').value)){$('bgColor').value=$('bgHex').value;renderSingle();}});
+$('photoInput').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;sourceFile=file;removedBlob=null;if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceUrl=URL.createObjectURL(file);try{originalImageEl=await imageFromUrl(sourceUrl);initCanvas();await setSubjectFromElement(originalImageEl,'Photo');$('placeholder').classList.add('hidden');$('canvasWrap').classList.remove('hidden');$('createBtn').disabled=false;$('resetBtn').disabled=false;status('Photo loaded. Drag, resize or rotate the selected layer.','ok');if($('removeBg').checked)await removeBackgroundNow()}catch(err){console.error(err);status('Photo could not be loaded.','error')}});
 
-function coverRect(img, w, h){
-  const scale=Math.max(w/img.width,h/img.height), dw=img.width*scale, dh=img.height*scale;
-  return [(w-dw)/2,(h-dh)/2,dw,dh];
-}
+$('removeBg').addEventListener('change',async()=>{if(!sourceFile)return;if($('removeBg').checked)await removeBackgroundNow();else{removedBlob=null;await setSubjectFromElement(originalImageEl,'Photo');status('Original background restored.','ok')}});
 
-async function ensureBackgroundRemoved(){
-  if(!$('removeBg').checked || !sourceBlob || !sourceImage) return;
-  if(removedBgImage) { renderSingle(); return; }
-  if(removalPromise) return removalPromise;
+async function removeBackgroundNow(){if(removalBusy||!sourceFile)return;removalBusy=true;$('removeBg').disabled=true;$('createBtn').disabled=true;status('AI background removal starting… first run may take longer.');try{
+  const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');
+  const removeBackground=mod.default||mod.removeBackground;
+  removedBlob=await removeBackground(sourceFile,{model:'isnet',progress:(key,current,total)=>{if(total){const p=Math.round(current/total*100);status(`Background remover: ${key} ${p}%`)}}});
+  const u=URL.createObjectURL(removedBlob);try{const img=await imageFromUrl(u);await setSubjectFromElement(img,'Subject (BG Removed)')}finally{URL.revokeObjectURL(u)}
+  status('Background removed. Subject is now a separate editable layer.','ok');
+}catch(err){console.error('BG remove error',err);$('removeBg').checked=false;status('Background removal failed. Check internet once and refresh.','error');}
+finally{removalBusy=false;$('removeBg').disabled=false;$('createBtn').disabled=false;refreshLayers()}}
 
-  $('createBtn').disabled=true;
-  setStatus('AI Background Remover loading… first use may download the model.');
+$('bgUpload').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;const u=URL.createObjectURL(f);try{const img=await imageFromUrl(u);if(backgroundObj)fabricCanvas.remove(backgroundObj);backgroundObj=await makeFabricImage(img,'Background Image','backgroundImage');placeCover(backgroundObj);fabricCanvas.add(backgroundObj);fabricCanvas.sendToBack(backgroundObj);fabricCanvas.sendToBack(backgroundRect);fabricCanvas.setActiveObject(backgroundObj);fabricCanvas.requestRenderAll();refreshLayers();status('Background image added. Select it and drag/resize to adjust.','ok')}finally{URL.revokeObjectURL(u)}});
 
-  removalPromise=(async()=>{
-    try{
-      const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');
-      const removeBackground=mod.default || mod.removeBackground;
-      if(typeof removeBackground!=='function') throw new Error('Background remover module did not load.');
-      const resultBlob=await removeBackground(sourceBlob, {
-        model:'isnet',
-        output:{format:'image/png', quality:1},
-        progress:(key,current,total)=>{
-          if(total>0){
-            const pct=Math.max(0,Math.min(100,Math.round((current/total)*100)));
-            setStatus(`AI Background Remover: ${pct}% • ${String(key).replace(':',' ')}`);
-          }
-        }
-      });
-      revokeRemovedBg();
-      removedBgUrl=URL.createObjectURL(resultBlob);
-      removedBgImage=await loadImageFromUrl(removedBgUrl);
-      setStatus('Background removed successfully. Select a background and create the photo.', true);
-      renderSingle();
-    }catch(err){
-      console.error(err);
-      removedBgImage=null;
-      setStatus('AI background removal failed. Check internet connection and reload once.', false, true);
-    }finally{
-      removalPromise=null;
-      $('createBtn').disabled=!sourceImage;
-    }
-  })();
-  return removalPromise;
-}
+$('bgColor').addEventListener('input',()=>{$('bgHex').value=$('bgColor').value;if(backgroundRect){backgroundRect.set('fill',$('bgColor').value);fabricCanvas.requestRenderAll()}});$('bgHex').addEventListener('change',()=>{if(/^#[0-9a-f]{6}$/i.test($('bgHex').value)){$('bgColor').value=$('bgHex').value;$('bgColor').dispatchEvent(new Event('input'))}});
 
-function sharpenCanvas(canvas, amount){
-  if(amount<=0) return; const c=canvas.getContext('2d',{willReadFrequently:true}); const im=c.getImageData(0,0,canvas.width,canvas.height); const src=new Uint8ClampedArray(im.data); const d=im.data; const w=canvas.width,h=canvas.height; const a=(amount/100)*0.45;
-  for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
-    const i=(y*w+x)*4;
-    for(let k=0;k<3;k++){const center=src[i+k]*5-src[i-4+k]-src[i+4+k]-src[i-w*4+k]-src[i+w*4+k];d[i+k]=Math.max(0,Math.min(255,src[i+k]*(1-a)+center*a));}
-  }
-  c.putImageData(im,0,0);
-}
+function applyEnhance(){if(!subjectObj)return;const filters=[];if($('autoEnhance').checked){const br=(Number($('brightness').value)-100)/100;const ct=(Number($('contrast').value)-100)/100;const sat=(Number($('saturation').value)-100)/100;filters.push(new fabric.Image.filters.Brightness({brightness:br}),new fabric.Image.filters.Contrast({contrast:ct}),new fabric.Image.filters.Saturation({saturation:sat}))}subjectObj.filters=filters;subjectObj.applyFilters();fabricCanvas?.requestRenderAll()}
+['autoEnhance','brightness','contrast','saturation'].forEach(id=>$(id).addEventListener('input',applyEnhance));
 
-function renderSingle(){
-  if(!sourceImage) return;
-  const [mmW,mmH]=getPhotoSize(), w=mmToPx(mmW), h=mmToPx(mmH);
-  const out=document.createElement('canvas'); out.width=w; out.height=h; const oc=out.getContext('2d');
-  if(bgImage){ const r=coverRect(bgImage,w,h); oc.drawImage(bgImage,...r); } else { oc.fillStyle=$('bgColor').value; oc.fillRect(0,0,w,h); }
+function rebuildCanvasKeepObjects(){if(!fabricCanvas||!originalImageEl)return;const oldW=fabricCanvas.width,oldH=fabricCanvas.height,[newW,newH]=editorDims();const objs=fabricCanvas.getObjects();objs.forEach(o=>{if(o!==backgroundRect){o.left=o.left/oldW*newW;o.top=o.top/oldH*newH;o.scaleX*=newW/oldW;o.scaleY*=newH/oldH}});fabricCanvas.setDimensions({width:newW,height:newH});backgroundRect.set({width:newW,height:newH});fabricCanvas.requestRenderAll();updateInfo()}
+$('photoSize').addEventListener('change',()=>{$('customSizeBox').classList.toggle('hidden',$('photoSize').value!=='custom');rebuildCanvasKeepObjects();updateInfo()});['customWidth','customHeight'].forEach(id=>$(id).addEventListener('input',rebuildCanvasKeepObjects));
 
-  const person=document.createElement('canvas'); person.width=w; person.height=h; const pc=person.getContext('2d');
-  const activeImage=($('removeBg').checked && removedBgImage) ? removedBgImage : sourceImage;
-  const r=coverRect(activeImage,w,h);
-  const br=$('autoEnhance').checked?Number($('brightness').value):100;
-  const ct=$('autoEnhance').checked?Number($('contrast').value):100;
-  pc.filter=`brightness(${br}%) contrast(${ct}%) saturate(102%)`;
-  pc.drawImage(activeImage,...r); pc.filter='none';
-  if($('autoEnhance').checked) sharpenCanvas(person,Number($('sharpness').value));
-  oc.drawImage(person,0,0);
-  lastSingleCanvas=out;
-  if(currentTab==='single') showCanvas(out); else renderSheet();
-}
+function activeEditable(){const o=fabricCanvas?.getActiveObject();return o&&o!==backgroundRect?o:null}
+document.querySelector('.editor-toolbar').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!fabricCanvas)return;const o=activeEditable();if(!o)return;const W=fabricCanvas.width,H=fabricCanvas.height;switch(b.dataset.action){case'centerH':o.set('left',W/2);break;case'centerV':o.set('top',H/2);break;case'fit':{const s=Math.min(W/o.width,H/o.height);o.scale(s);o.set({left:W/2,top:H/2});break}case'fill':{const s=Math.max(W/o.width,H/o.height);o.scale(s);o.set({left:W/2,top:H/2});break}case'rotateLeft':o.rotate((o.angle-90)%360);break;case'rotateRight':o.rotate((o.angle+90)%360);break;case'flipX':o.set('flipX',!o.flipX);break;case'forward':fabricCanvas.bringForward(o);break;case'backward':fabricCanvas.sendBackwards(o);if(backgroundRect)fabricCanvas.sendToBack(backgroundRect);break}o.setCoords();fabricCanvas.requestRenderAll();refreshLayers()});
 
-function showCanvas(canvas){
-  photoCanvas.width=canvas.width; photoCanvas.height=canvas.height; ctx.clearRect(0,0,photoCanvas.width,photoCanvas.height); ctx.drawImage(canvas,0,0); photoCanvas.classList.remove('hidden');
-}
+function refreshLayers(){if(!fabricCanvas)return;const list=$('layersList');const objs=fabricCanvas.getObjects().slice().reverse();list.innerHTML='';objs.forEach(obj=>{const row=document.createElement('div');row.className='layer-item'+(fabricCanvas.getActiveObject()===obj?' active':'');const ico=obj.layerType==='subject'?'👤':obj.layerType==='backgroundImage'?'🌄':'🎨';row.innerHTML=`<div class="layer-thumb">${ico}</div><div class="layer-name">${obj.name||'Layer'}</div><button class="layer-icon-btn eye" title="Show/Hide">${obj.visible===false?'🙈':'👁'}</button><button class="layer-icon-btn lock" title="Lock/Unlock">${obj.selectable===false&&obj!==backgroundRect?'🔒':'🔓'}</button>`;row.addEventListener('click',ev=>{if(ev.target.closest('button'))return;if(obj!==backgroundRect&&obj.selectable!==false){fabricCanvas.setActiveObject(obj);fabricCanvas.requestRenderAll();refreshLayers()}});row.querySelector('.eye').onclick=ev=>{ev.stopPropagation();obj.visible=!obj.visible;if(!obj.visible&&fabricCanvas.getActiveObject()===obj)fabricCanvas.discardActiveObject();fabricCanvas.requestRenderAll();refreshLayers()};row.querySelector('.lock').onclick=ev=>{ev.stopPropagation();if(obj===backgroundRect)return;const lock=obj.selectable!==false;obj.set({selectable:!lock,evented:!lock});if(lock)fabricCanvas.discardActiveObject();fabricCanvas.requestRenderAll();refreshLayers()};list.appendChild(row)});if(!objs.length)list.innerHTML='<div class="empty-layers">No layers yet</div>'}
 
-function renderSheet(){
-  if(!lastSingleCanvas) return;
-  const [pw,ph]=paperPresets[$('paperSize').value]; const W=mmToPx(pw),H=mmToPx(ph), gap=mmToPx(3), margin=mmToPx(5);
-  const sheet=document.createElement('canvas'); sheet.width=W;sheet.height=H; const s=sheet.getContext('2d'); s.fillStyle='#fff';s.fillRect(0,0,W,H);
-  const iw=lastSingleCanvas.width,ih=lastSingleCanvas.height; const cols=Math.max(1,Math.floor((W-margin*2+gap)/(iw+gap))); const rows=Math.max(1,Math.floor((H-margin*2+gap)/(ih+gap)));
-  const usedW=cols*iw+(cols-1)*gap,usedH=rows*ih+(rows-1)*gap; const sx=(W-usedW)/2,sy=(H-usedH)/2;
-  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){const dx=sx+x*(iw+gap),dy=sy+y*(ih+gap);s.drawImage(lastSingleCanvas,dx,dy);s.strokeStyle='#d1d5db';s.lineWidth=1;s.strokeRect(dx,dy,iw,ih);}
-  lastSheetCanvas=sheet; showCanvas(sheet); setStatus(`${cols*rows} photos arranged automatically on selected paper.`,true);
-}
+function exportSingle(type='image/png'){const [mmW]=photoSize(),targetW=mmToPx(mmW),mult=targetW/fabricCanvas.width;fabricCanvas.discardActiveObject();fabricCanvas.requestRenderAll();return fabricCanvas.toDataURL({format:type==='image/jpeg'?'jpeg':'png',quality:.97,multiplier:mult,enableRetinaScaling:false})}
+function dataUrlToImage(data){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=data})}
 
-$('createBtn').addEventListener('click',async()=>{
-  if($('removeBg').checked) await ensureBackgroundRemoved();
-  renderSingle();renderSheet();currentTab='single';showCanvas(lastSingleCanvas);
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab==='single'));
-  $('resultTabs').classList.remove('hidden');$('actions').classList.remove('hidden');setStatus('Digital photo created successfully.',true);
-});
+async function renderSheet(){if(!fabricCanvas)return;const single=await dataUrlToImage(exportSingle('image/png'));let [pw,ph]=paperPresets[$('paperSize').value];if($('orientation').value==='landscape')[pw,ph]=[ph,pw];const W=mmToPx(pw),H=mmToPx(ph),gap=mmToPx(2.5),margin=mmToPx(5),iw=single.width,ih=single.height;const cvs=$('sheetCanvas'),c=cvs.getContext('2d');cvs.width=W;cvs.height=H;c.fillStyle='#fff';c.fillRect(0,0,W,H);const cols=Math.max(1,Math.floor((W-margin*2+gap)/(iw+gap))),rows=Math.max(1,Math.floor((H-margin*2+gap)/(ih+gap))),capacity=cols*rows;let requested=$('copies').value==='auto'?capacity:Math.min(capacity,Number($('copies').value));const usedCols=Math.min(cols,requested),usedRows=Math.ceil(requested/usedCols),usedW=usedCols*iw+(usedCols-1)*gap,usedH=usedRows*ih+(usedRows-1)*gap,sx=(W-usedW)/2,sy=(H-usedH)/2;for(let n=0;n<requested;n++){const x=n%usedCols,y=Math.floor(n/usedCols),dx=sx+x*(iw+gap),dy=sy+y*(ih+gap);c.drawImage(single,dx,dy);c.strokeStyle='#d5d8df';c.lineWidth=1;c.strokeRect(dx,dy,iw,ih)}sheetOutput=cvs;status(`${requested} photo(s) arranged on selected paper. Capacity: ${capacity}.`,'ok')}
 
-document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{currentTab=btn.dataset.tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===btn));if(currentTab==='single')showCanvas(lastSingleCanvas);else renderSheet();}));
+$('createBtn').addEventListener('click',async()=>{if(!fabricCanvas)return;if($('removeBg').checked&&!removedBlob)await removeBackgroundNow();await renderSheet();$('resultTabs').classList.remove('hidden');$('actions').classList.remove('hidden');status('Digital photo and print sheet are ready.','ok')});
 
-function downloadCanvas(canvas,type,name){if(!canvas)return;const a=document.createElement('a');a.download=name;a.href=canvas.toDataURL(type,type==='image/jpeg'?0.96:1);a.click();}
-$('downloadJpg').onclick=()=>downloadCanvas(lastSingleCanvas,'image/jpeg','digital-photo-300dpi.jpg');
-$('downloadPng').onclick=()=>downloadCanvas(lastSingleCanvas,'image/png','digital-photo-300dpi.png');
-$('downloadSheet').onclick=()=>downloadCanvas(lastSheetCanvas,'image/jpeg','digital-photo-print-sheet.jpg');
+document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',async()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));const sheet=btn.dataset.tab==='sheet';$('previewStage').classList.toggle('hidden',sheet);$('sheetPreviewWrap').classList.toggle('hidden',!sheet);if(sheet)await renderSheet()}));
+function dl(url,name){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
+$('downloadJpg').onclick=()=>dl(exportSingle('image/jpeg'),'digital-photo-300dpi.jpg');$('downloadPng').onclick=()=>dl(exportSingle('image/png'),'digital-photo-300dpi.png');$('downloadSheet').onclick=async()=>{await renderSheet();dl($('sheetCanvas').toDataURL('image/jpeg',.97),'digital-photo-print-sheet-300dpi.jpg')};
+['paperSize','copies','orientation'].forEach(id=>$(id).addEventListener('change',()=>{if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()}));
 
-$('resetBtn').addEventListener('click',()=>{
-  sourceImage=null;sourceBlob=null;bgImage=null;revokeRemovedBg();photoInput.value='';$('bgUpload').value='';
-  $('createBtn').disabled=true;$('resetBtn').disabled=true;$('placeholder').classList.remove('hidden');photoCanvas.classList.add('hidden');
-  $('resultTabs').classList.add('hidden');$('actions').classList.add('hidden');setStatus('Select a photo to begin.');
-});
+$('resetBtn').addEventListener('click',()=>{if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceUrl=null;sourceFile=null;originalImageEl=null;removedBlob=null;subjectObj=null;backgroundObj=null;if(fabricCanvas){fabricCanvas.dispose();fabricCanvas=null}$('photoInput').value='';$('bgUpload').value='';$('removeBg').checked=false;$('placeholder').classList.remove('hidden');$('canvasWrap').classList.add('hidden');$('sheetPreviewWrap').classList.add('hidden');$('previewStage').classList.remove('hidden');$('resultTabs').classList.add('hidden');$('actions').classList.add('hidden');$('createBtn').disabled=true;$('resetBtn').disabled=true;$('layersList').innerHTML='<div class="empty-layers">No layers yet</div>';status('Select a photo to begin.')});
 updateInfo();
