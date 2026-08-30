@@ -14,8 +14,16 @@ function photoSize(){return $('photoSize').value==='custom'?[Number($('customWid
 function editorDims(){const [w,h]=photoSize();const maxH=Math.min(560,Math.max(360,window.innerHeight*0.60)),maxW=470,ratio=w/h;let H=maxH,W=H*ratio;if(W>maxW){W=maxW;H=W/ratio}return [Math.round(W),Math.round(H)]}
 function status(msg,type=''){const el=$('status');if(!el)return;el.textContent=msg;el.className='status '+type}
 function borderSizeMm(){return $('borderEnabled')?.checked?Math.max(0,Number($('borderSize')?.value||0)):0}
-function updateBorderPreview(){const wrap=$('canvasWrap');if(!wrap)return;const mm=borderSizeMm();const [w]=photoSize();const px=mm>0&&fabricCanvas?Math.max(1,Math.round((fabricCanvas.width/w)*mm)):0;wrap.style.borderWidth=px+'px';wrap.style.borderColor=$('borderColor')?.value||'#ffffff';$('borderControls')?.classList.toggle('disabled-control',!$('borderEnabled')?.checked)}
-function updateInfo(){const [w,h]=photoSize(),dpi=outputDpi(),b=borderSizeMm(),pxW=mmToPx(w+2*b,dpi),pxH=mmToPx(h+2*b,dpi);$('previewInfo').textContent=`${w} × ${h} mm${b?` + ${b} mm border`:''} • ${dpi} DPI • ${pxW} × ${pxH} px`;$('pixelInfo').textContent=`${pxW} × ${pxH} px`;updateBorderPreview()}
+function applyPhotoBorder(render=true){
+  const wrap=$('canvasWrap');if(wrap){wrap.style.borderWidth='0';wrap.style.borderColor='transparent'}
+  $('borderControls')?.classList.toggle('disabled-control',!$('borderEnabled')?.checked);
+  if(!subjectObj||!fabricCanvas)return;
+  const mm=borderSizeMm(),[w]=photoSize(),px=mm>0?Math.max(1,(fabricCanvas.width/w)*mm):0;
+  subjectObj.set({stroke:mm>0?($('borderColor')?.value||'#ffffff'):null,strokeWidth:px,strokeUniform:true,paintFirst:'stroke'});
+  subjectObj.setCoords();if(render)fabricCanvas.requestRenderAll();
+}
+function updateBorderPreview(){applyPhotoBorder(true)}
+function updateInfo(){const [w,h]=photoSize(),dpi=outputDpi(),b=borderSizeMm(),pxW=mmToPx(w,dpi),pxH=mmToPx(h,dpi);$('previewInfo').textContent=`${w} × ${h} mm${b?` • Photo border ${b} mm`:''} • ${dpi} DPI • ${pxW} × ${pxH} px`;$('pixelInfo').textContent=`${pxW} × ${pxH} px`;updateBorderPreview()}
 function imageFromUrl(url){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('Image decode failed'));i.src=url})}
 function fileToDataURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
 async function normalizeImageFile(file){
@@ -43,8 +51,8 @@ function initCanvas(){const [W,H]=editorDims();if(fabricCanvas)fabricCanvas.disp
 function makeFabricImage(img,name,type){return new Fabric.Image(img,{name,layerType:type,transparentCorners:false,cornerColor:'#0b5ed7',cornerStrokeColor:'#fff',borderColor:'#0b5ed7',cornerSize:11,padding:2,centeredScaling:false,originX:'center',originY:'center'})}
 function placeCover(obj){const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.max(W/obj.width,H/obj.height);obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0});obj.setCoords()}
 function placeSubject(obj){const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.min(W/obj.width,H/obj.height)*.92;obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0});obj.setCoords()}
-function relinkObjects(){const objs=fabricCanvas?.getObjects()||[];backgroundRect=objs.find(o=>o.layerType==='backgroundColor')||null;backgroundObj=objs.find(o=>o.layerType==='backgroundImage')||null;subjectObj=objs.find(o=>o.layerType==='subject')||null}
-async function setSubjectFromDataUrl(dataUrl,name='Photo'){const img=await imageFromUrl(dataUrl);if(subjectObj)fabricCanvas.remove(subjectObj);subjectObj=makeFabricImage(img,name,'subject');placeSubject(subjectObj);fabricCanvas.add(subjectObj);fabricCanvas.setActiveObject(subjectObj);applyEnhance(false);fabricCanvas.requestRenderAll();refreshLayers()}
+function relinkObjects(){const objs=fabricCanvas?.getObjects()||[];backgroundRect=objs.find(o=>o.layerType==='backgroundColor')||null;backgroundObj=objs.find(o=>o.layerType==='backgroundImage')||null;subjectObj=objs.find(o=>o.layerType==='subject')||null;applyPhotoBorder(false)}
+async function setSubjectFromDataUrl(dataUrl,name='Photo'){const img=await imageFromUrl(dataUrl);if(subjectObj)fabricCanvas.remove(subjectObj);subjectObj=makeFabricImage(img,name,'subject');placeSubject(subjectObj);fabricCanvas.add(subjectObj);fabricCanvas.setActiveObject(subjectObj);applyEnhance(false);applyPhotoBorder(false);fabricCanvas.requestRenderAll();refreshLayers()}
 
 function uiState(){return {nepalPreset:$('nepalPreset').value,photoSize:$('photoSize').value,customWidth:$('customWidth').value,customHeight:$('customHeight').value,bgColor:$('bgColor').value,bgHex:$('bgHex').value,autoEnhance:$('autoEnhance').checked,brightness:$('brightness').value,contrast:$('contrast').value,saturation:$('saturation').value,outputDpi:$('outputDpi').value,borderEnabled:$('borderEnabled').checked,borderSize:$('borderSize').value,borderColor:$('borderColor').value,borderHex:$('borderHex').value}}
 function applyUiState(s={}){restoringHistory=true;Object.entries(s).forEach(([k,v])=>{const el=$(k);if(!el)return;if(el.type==='checkbox')el.checked=!!v;else el.value=v});$('customSizeBox').classList.toggle('hidden',$('photoSize').value!=='custom');updateInfo();updateBorderPreview();restoringHistory=false}
@@ -79,18 +87,18 @@ $('bgUpload').addEventListener('change',async e=>{const f=e.target.files?.[0];if
 
 $('bgColor').addEventListener('input',()=>{$('bgHex').value=$('bgColor').value;if(backgroundRect){backgroundRect.set('fill',$('bgColor').value);fabricCanvas.requestRenderAll()}if(!restoringHistory)saveHistory()});
 $('bgHex').addEventListener('change',()=>{if(/^#[0-9a-f]{6}$/i.test($('bgHex').value)){$('bgColor').value=$('bgHex').value;$('bgColor').dispatchEvent(new Event('input'))}});
-$('borderEnabled').addEventListener('change',()=>{updateInfo();saveHistory();if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()});
+$('borderEnabled').addEventListener('change',()=>{applyPhotoBorder();updateInfo();saveHistory();if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()});
 function clampBorder(v){return Math.min(20,Math.max(0,Math.round((Number(v)||0)*2)/2))}
-function setBorderSize(v){$('borderSize').value=clampBorder(v);updateInfo();saveHistory();if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()}
+function setBorderSize(v){$('borderSize').value=clampBorder(v);applyPhotoBorder();updateInfo();saveHistory();if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()}
 $('borderMinus').addEventListener('click',()=>setBorderSize(Number($('borderSize').value)-.5));
 $('borderPlus').addEventListener('click',()=>setBorderSize(Number($('borderSize').value)+.5));
 $('borderSize').addEventListener('change',()=>setBorderSize($('borderSize').value));
-$('borderColor').addEventListener('input',()=>{$('borderHex').value=$('borderColor').value;updateBorderPreview();saveHistory();if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()});
+$('borderColor').addEventListener('input',()=>{$('borderHex').value=$('borderColor').value;applyPhotoBorder();saveHistory();if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()});
 $('borderHex').addEventListener('change',()=>{if(/^#[0-9a-f]{6}$/i.test($('borderHex').value)){$('borderColor').value=$('borderHex').value;$('borderColor').dispatchEvent(new Event('input'))}});
 function applyEnhance(record=true){if(!subjectObj)return;const filters=[];if($('autoEnhance').checked){filters.push(new Fabric.Image.filters.Brightness({brightness:(Number($('brightness').value)-100)/100}),new Fabric.Image.filters.Contrast({contrast:(Number($('contrast').value)-100)/100}),new Fabric.Image.filters.Saturation({saturation:(Number($('saturation').value)-100)/100}))}subjectObj.filters=filters;subjectObj.applyFilters();fabricCanvas?.requestRenderAll();if(record)saveHistory()}
 ['autoEnhance','brightness','contrast','saturation'].forEach(id=>$(id).addEventListener('input',()=>applyEnhance(true)));
 
-function rebuildCanvasKeepObjects(record=true){if(!fabricCanvas)return updateInfo();const oldW=fabricCanvas.width,oldH=fabricCanvas.height,[newW,newH]=editorDims();fabricCanvas.getObjects().forEach(o=>{if(o!==backgroundRect){o.left=o.left/oldW*newW;o.top=o.top/oldH*newH;o.scaleX*=newW/oldW;o.scaleY*=newH/oldH}});fabricCanvas.setDimensions({width:newW,height:newH});if(backgroundRect)backgroundRect.set({width:newW,height:newH});fabricCanvas.requestRenderAll();updateInfo();if(record)saveHistory()}
+function rebuildCanvasKeepObjects(record=true){if(!fabricCanvas)return updateInfo();const oldW=fabricCanvas.width,oldH=fabricCanvas.height,[newW,newH]=editorDims();fabricCanvas.getObjects().forEach(o=>{if(o!==backgroundRect){o.left=o.left/oldW*newW;o.top=o.top/oldH*newH;o.scaleX*=newW/oldW;o.scaleY*=newH/oldH}});fabricCanvas.setDimensions({width:newW,height:newH});if(backgroundRect)backgroundRect.set({width:newW,height:newH});applyPhotoBorder(false);fabricCanvas.requestRenderAll();updateInfo();if(record)saveHistory()}
 $('nepalPreset').addEventListener('change',()=>{
   const v=$('nepalPreset').value;
   if(v==='manual')return;
@@ -138,10 +146,11 @@ function refreshLayers(){if(!fabricCanvas)return;const list=$('layersList'),objs
 
 function exportSingle(type='image/png'){
   if(!fabricCanvas)return null;
-  const [mmW,mmH]=photoSize(),dpi=outputDpi(),b=borderSizeMm(),contentW=mmToPx(mmW,dpi),contentH=mmToPx(mmH,dpi),borderPx=mmToPx(b,dpi);
+  const [mmW,mmH]=photoSize(),dpi=outputDpi(),contentW=mmToPx(mmW,dpi),contentH=mmToPx(mmH,dpi);
+  applyPhotoBorder(false);
   const active=fabricCanvas.getActiveObject();fabricCanvas.discardActiveObject();fabricCanvas.requestRenderAll();
   const inner=fabricCanvas.toCanvasElement(contentW/fabricCanvas.width,{enableRetinaScaling:false});
-  const out=document.createElement('canvas');out.width=contentW+borderPx*2;out.height=contentH+borderPx*2;const c=out.getContext('2d',{alpha:type!=='image/jpeg'});c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.fillStyle=b>0?$('borderColor').value:'#ffffff';if(type==='image/jpeg'||b>0)c.fillRect(0,0,out.width,out.height);c.drawImage(inner,borderPx,borderPx,contentW,contentH);
+  const out=document.createElement('canvas');out.width=contentW;out.height=contentH;const c=out.getContext('2d',{alpha:type!=='image/jpeg'});c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';if(type==='image/jpeg'){c.fillStyle='#ffffff';c.fillRect(0,0,out.width,out.height)}c.drawImage(inner,0,0,contentW,contentH);
   if(active){fabricCanvas.setActiveObject(active);fabricCanvas.requestRenderAll()}
   return out.toDataURL(type,type==='image/jpeg'?1:undefined)
 }
