@@ -6,6 +6,7 @@ const nepalPresets = {general35x45:[35,45],passport35x45:[35,45],citizenship35x4
 const mmToPx = (mm,dpi=outputDpi()) => Math.round(mm/25.4*dpi);
 let fabricCanvas=null, sourceFile=null, sourceDataUrl=null, workingBaseDataUrl=null, retouchedDataUrl=null, originalImageEl=null, subjectObj=null, backgroundObj=null, backgroundRect=null, photoBorderObj=null, removedBlob=null, removalBusy=false, cropGuide=null, cropTarget=null, displayingBefore=false;
 let history=[], historyIndex=-1, restoringHistory=false, historyTimer=null;
+let processingStartedAt=0, processingTimer=null, masterLocked=false, spotBrushActive=false, bgModelModulePromise=null;
 
 if (!Fabric) window.addEventListener('load',()=>status('Editor library could not load. Please refresh once.','error'));
 
@@ -25,6 +26,9 @@ function showProcessingUI(title='Processing Photo',message='Please wait while yo
   $('processingTitle').textContent=title;setProcessingUI(2,'Preparing…',message);overlay.classList.remove('hidden');document.body.classList.add('processing-active');overlay.setAttribute('aria-busy','true');
 }
 function hideProcessingUI(){processingUiActive=false;const overlay=$('processingOverlay');if(!overlay)return;overlay.classList.add('hidden');overlay.setAttribute('aria-busy','false');document.body.classList.remove('processing-active')}
+function startProcessingClock(){processingStartedAt=Date.now();clearInterval(processingTimer);processingTimer=setInterval(()=>{const s=Math.floor((Date.now()-processingStartedAt)/1000);if($('processingElapsed'))$('processingElapsed').textContent=s<60?`${s}s`:`${Math.floor(s/60)}m ${s%60}s`;if($('processingHint'))$('processingHint').textContent=s>45?'Taking longer than usual — model may still be loading.':s>20?'AI is working…':'Preparing AI…'},1000)}
+function stopProcessingClock(){clearInterval(processingTimer);processingTimer=null}
+
 window.addEventListener('beforeunload',e=>{if(!processingUiActive)return;e.preventDefault();e.returnValue=''});
 
 function borderSizeMm(){return $('borderEnabled')?.checked?Math.max(0,Number($('borderSize')?.value||0)):0}
@@ -57,7 +61,9 @@ async function normalizeImageFile(file){
 }
 function blobToDataURL(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)})}
 function canvasToBlob(canvas,type='image/png',quality=.96){return new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('Canvas blob failed')),type,quality))}
-async function prepareAiInputBlob(dataUrl,maxDim=1600){
+function aiMaxDimension(){const m=$('performanceMode')?.value||'balanced';return m==='fast'?1024:m==='quality'?1920:1400}
+function preloadBackgroundEngine(){if(!bgModelModulePromise)bgModelModulePromise=import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');return bgModelModulePromise}
+async function prepareAiInputBlob(dataUrl,maxDim=aiMaxDimension()){
   const img=await imageFromUrl(dataUrl),sw=img.naturalWidth||img.width,sh=img.naturalHeight||img.height,sc=Math.min(1,maxDim/Math.max(sw,sh));
   const w=Math.max(1,Math.round(sw*sc)),h=Math.max(1,Math.round(sh*sc)),c=document.createElement('canvas');c.width=w;c.height=h;
   const x=c.getContext('2d',{alpha:false});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(img,0,0,w,h);
@@ -175,14 +181,14 @@ async function removeBackgroundNow(){
   removalBusy=true;
   $('removeBg').disabled=true;
   $('createBtn').disabled=true;
-  showProcessingUI('Removing Background','AI is separating the person from the background. The first run may take a little longer.');
+  if($('cancelProcessingBtn'))$('cancelProcessingBtn').disabled=false;showProcessingUI('Removing Background','AI is separating the person from the background. The first run may take a little longer.');startProcessingClock();
   status('AI background removal starting… first run may take longer.');
   try{
     setProcessingUI(5,'Loading AI engine…');
-    const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');
+    const mod=await preloadBackgroundEngine();
     const removeBackground=mod.default||mod.removeBackground;
     setProcessingUI(10,'Optimizing photo for AI…');
-    const aiInput=await prepareAiInputBlob(sourceDataUrl,1600);
+    const aiInput=await prepareAiInputBlob(sourceDataUrl,aiMaxDimension());
     setProcessingUI(14,'Preparing AI model…');
     removedBlob=await removeBackground(aiInput,{
       model:'isnet',
@@ -219,7 +225,7 @@ async function removeBackgroundNow(){
     status('Background removal failed. Check internet once and refresh.','error');
     await new Promise(r=>setTimeout(r,900));
   }finally{
-    hideProcessingUI();
+    stopProcessingClock();hideProcessingUI();
     removalBusy=false;
     $('removeBg').disabled=false;
     $('createBtn').disabled=false;
@@ -562,3 +568,62 @@ const _uiStateV22=uiState;uiState=function(){return {..._uiStateV22(),customUnit
 const _rebuildCanvasKeepObjectsV22=rebuildCanvasKeepObjects;rebuildCanvasKeepObjects=function(record=true){_rebuildCanvasKeepObjectsV22(record);syncBackgroundFrame();setBackgroundMode();syncPhotoBorder()};
 const _relinkObjectsV24=relinkObjects;relinkObjects=function(){_relinkObjectsV24();syncBackgroundFrame();setBackgroundMode();syncPhotoBorder()};
 setBackgroundMode();updateInfo();syncPhotoBorder();
+
+/* ===== v2.6 Pro Studio ===== */
+window.addEventListener('load',()=>setTimeout(()=>preloadBackgroundEngine().catch(()=>{}),1200));
+
+function qualityReport(){
+  const issues=[]; if(!fabricCanvas||!subjectObj)return {score:0,issues:['No photo loaded']};
+  const W=fabricCanvas.width,H=fabricCanvas.height,b=subjectObj.getBoundingRect(true,true);
+  if(b.width<W*.62)issues.push('Subject may be too small');
+  if(b.width>W*1.70)issues.push('Subject may be too large');
+  if(b.top>H*.20)issues.push('Subject may be too low');
+  if($('bgMode')?.value!=='transparent'&&backgroundRect&&(Math.abs(backgroundRect.width-W)>1||Math.abs(backgroundRect.height-H)>1))issues.push('Background frame mismatch');
+  return {score:Math.max(55,100-issues.length*11),issues};
+}
+function runQualityCheck(show=true){
+  syncBackgroundFrame();syncPhotoBorder();const r=qualityReport(),badge=$('qualityScoreBadge');
+  if(badge)badge.textContent=r.issues.length?`${r.score}% Check`:'100% Ready';
+  const box=$('autoQualityChecks');if(box)box.innerHTML=(r.issues.length?r.issues:['Exact frame','Background synchronized','Master export ready']).map(x=>`<span>${r.issues.length?'⚠':'✓'} ${x}</span>`).join('');
+  if(show)status(r.issues.length?`Quality check: ${r.issues.join(' • ')}`:'Quality check passed. Final frame/background/master are synchronized.',r.issues.length?'':'ok');
+  return r;
+}
+$('qualityCheckBtn')?.addEventListener('click',()=>runQualityCheck(true));
+
+function autoPassportCompose(){
+  if(!fabricCanvas||!subjectObj)return;setMasterLock(false);
+  const W=fabricCanvas.width,H=fabricCanvas.height,currentW=Math.abs(subjectObj.width*subjectObj.scaleX),targetW=W*1.02;
+  const factor=Math.max(.75,Math.min(1.45,targetW/Math.max(1,currentW)));
+  subjectObj.scaleX*=factor;subjectObj.scaleY*=factor;subjectObj.set({left:W/2,top:H*.51,originX:'center',originY:'center'});subjectObj.setCoords();
+  fabricCanvas.setActiveObject(subjectObj);fabricCanvas.requestRenderAll();syncPhotoBorder();saveHistory();runQualityCheck(false);status('Automatic passport positioning applied. Fine-tune manually if needed.','ok');
+}
+$('autoComposeBtn')?.addEventListener('click',autoPassportCompose);
+
+function setMasterLock(on){
+  masterLocked=!!on;document.body.classList.toggle('master-locked',masterLocked);
+  [subjectObj,backgroundObj,(typeof suitObj!=='undefined'?suitObj:null)].filter(Boolean).forEach(o=>o.set({selectable:!masterLocked,evented:!masterLocked}));
+  fabricCanvas?.discardActiveObject();fabricCanvas?.requestRenderAll();
+  if($('lockMasterBtn'))$('lockMasterBtn').textContent=masterLocked?'🔓 Unlock Final Master':'🔒 Lock Final Master';
+  status(masterLocked?'Final master locked. Digital and print outputs will use this composition.':'Final master unlocked for editing.','ok');
+}
+$('lockMasterBtn')?.addEventListener('click',()=>setMasterLock(!masterLocked));
+
+$('compareSliderBtn')?.addEventListener('click',async()=>{
+  if(!workingBaseDataUrl||!retouchedDataUrl||!fabricCanvas)return;
+  if(displayingBefore){displayingBefore=false;await setSubjectFromDataUrl(retouchedDataUrl,'Photo (After)');$('compareSliderBtn').textContent='⇆ Compare'}
+  else{displayingBefore=true;await setSubjectFromDataUrl(workingBaseDataUrl,'Photo (Before)');$('compareSliderBtn').textContent='⇆ Show After'}
+  syncCompareButtons();
+});
+
+function localSpotCleanupAt(canvasX,canvasY){
+  if(!fabricCanvas)return;const r=Math.max(4,Number($('spotBrushSize')?.value||18)),el=fabricCanvas.lowerCanvasEl,ctx=el.getContext('2d'),x=Math.round(canvasX),y=Math.round(canvasY);
+  try{const sx=Math.max(0,Math.round(x-r*1.6)),sy=Math.max(0,Math.round(y-r*1.6)),sw=Math.max(2,Math.round(r)),sh=sw,sample=ctx.getImageData(sx,sy,sw,sh),tmp=document.createElement('canvas');tmp.width=sw;tmp.height=sh;tmp.getContext('2d').putImageData(sample,0,0);
+    const img=new Image();img.onload=()=>{const patch=new Fabric.Image(img,{left:x,top:y,originX:'center',originY:'center',scaleX:(r*2)/img.width,scaleY:(r*2)/img.height,opacity:.55,name:'Spot Cleanup',layerType:'retouchPatch'});fabricCanvas.add(patch);fabricCanvas.setActiveObject(patch);fabricCanvas.requestRenderAll();refreshLayers();saveHistory();status('Spot cleanup added. Undo if needed.','ok')};img.src=tmp.toDataURL('image/png')
+  }catch(e){status('Spot cleanup could not sample this area.','error')}
+}
+$('spotBrushBtn')?.addEventListener('click',()=>{spotBrushActive=!spotBrushActive;$('spotBrushBtn').textContent=spotBrushActive?'✕ Stop Spot Brush':'🩹 Start Spot Brush';status(spotBrushActive?'Spot brush active: click a small blemish/spot.':'Spot brush stopped.','ok')});
+document.addEventListener('click',e=>{if(!spotBrushActive||!fabricCanvas||e.target!==fabricCanvas.upperCanvasEl)return;const rect=e.target.getBoundingClientRect(),x=(e.clientX-rect.left)*(fabricCanvas.width/rect.width),y=(e.clientY-rect.top)*(fabricCanvas.height/rect.height);localSpotCleanupAt(x,y)});
+
+$('cancelProcessingBtn')?.addEventListener('click',()=>{if(!removalBusy)return;$('cancelProcessingBtn').disabled=true;$('processingHint').textContent='Cancel requested — waiting for current AI step…';status('Cancel requested. The current browser AI step must finish safely.')});
+$('performanceMode')?.addEventListener('change',()=>status(`Processing mode: ${$('performanceMode').value}. It applies to the next background removal.`,'ok'));
+['photoSize','customWidth','customHeight','customUnit','bgMode','bgColor','outputDpi','customDpi'].forEach(id=>$(id)?.addEventListener('change',()=>setTimeout(()=>runQualityCheck(false),0)));
