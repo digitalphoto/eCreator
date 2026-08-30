@@ -4,7 +4,7 @@ const sizePresets = {'35x45':[35,45],'51x51':[50.8,50.8],'25x30':[25,30],'30x40'
 const paperPresets = {'4x6':[101.6,152.4],'5x7':[127,177.8],'6x8':[152.4,203.2],'8x10':[203.2,254],'a4':[210,297],'a5':[148,210]};
 const nepalPresets = {general35x45:[35,45],passport35x45:[35,45],citizenship35x45:[35,45],loksewa35x45:[35,45],bank35x45:[35,45],school35x45:[35,45],licence35x45:[35,45]};
 const mmToPx = (mm,dpi=outputDpi()) => Math.round(mm/25.4*dpi);
-let fabricCanvas=null, sourceFile=null, sourceDataUrl=null, originalImageEl=null, subjectObj=null, backgroundObj=null, backgroundRect=null, removedBlob=null, removalBusy=false, cropGuide=null, cropTarget=null;
+let fabricCanvas=null, sourceFile=null, sourceDataUrl=null, workingBaseDataUrl=null, retouchedDataUrl=null, originalImageEl=null, subjectObj=null, backgroundObj=null, backgroundRect=null, photoBorderObj=null, removedBlob=null, removalBusy=false, cropGuide=null, cropTarget=null, displayingBefore=false;
 let history=[], historyIndex=-1, restoringHistory=false, historyTimer=null;
 
 if (!Fabric) window.addEventListener('load',()=>status('Editor library could not load. Please refresh once.','error'));
@@ -66,13 +66,46 @@ async function redo(){if(historyIndex>=history.length-1)return;historyIndex++;aw
 $('undoBtn').addEventListener('click',undo);$('redoBtn').addEventListener('click',redo);
 document.addEventListener('keydown',e=>{const tag=(e.target?.tagName||'').toLowerCase(),editing=['input','textarea','select'].includes(tag)||e.target?.isContentEditable;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo()}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo()}else if(!editing&&!e.ctrlKey&&!e.metaKey&&(e.key==='Delete'||e.key==='Backspace')){if(fabricCanvas?.getActiveObject()){e.preventDefault();deleteActiveLayer()}}});
 
+
+/* ===== v2.1 Natural Studio Retouch engine ===== */
+function retouchLevel(){return $('retouchStrength')?.value||'normal'}
+function retouchParams(){const v=retouchLevel();return v==='light'?{smooth:.14,shadow:7,wb:.035}:v==='strong'?{smooth:.34,shadow:17,wb:.065}:{smooth:.24,shadow:11,wb:.05}}
+function isLikelySkin(r,g,b,a){if(a<40)return false;const mx=Math.max(r,g,b),mn=Math.min(r,g,b);return r>60&&g>35&&b>20&&(mx-mn)>12&&r>g&&r>b&&Math.abs(r-g)>5}
+async function naturalRetouchDataUrl(dataUrl){
+  if(!$('autoRetouch')?.checked)return dataUrl;
+  const img=await imageFromUrl(dataUrl),maxDim=1900,scale=Math.min(1,maxDim/Math.max(img.naturalWidth||img.width,img.naturalHeight||img.height)),w=Math.max(1,Math.round((img.naturalWidth||img.width)*scale)),h=Math.max(1,Math.round((img.naturalHeight||img.height)*scale));
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d',{alpha:true,willReadFrequently:true});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(img,0,0,w,h);
+  const im=x.getImageData(0,0,w,h),src=new Uint8ClampedArray(im.data),d=im.data,p=retouchParams();
+  let sr=0,sg=0,sb=0,n=0;for(let yy=0;yy<h;yy+=8){for(let xx=0;xx<w;xx+=8){const i=(yy*w+xx)*4;if(src[i+3]<40)continue;sr+=src[i];sg+=src[i+1];sb+=src[i+2];n++}}
+  const ar=sr/Math.max(1,n),ag=sg/Math.max(1,n),ab=sb/Math.max(1,n),gray=(ar+ag+ab)/3;
+  const gr=Math.max(1-p.wb,Math.min(1+p.wb,gray/Math.max(1,ar))),gg=Math.max(1-p.wb,Math.min(1+p.wb,gray/Math.max(1,ag))),gb=Math.max(1-p.wb,Math.min(1+p.wb,gray/Math.max(1,ab)));
+  const offsets=[-4,4,-w*4,w*4];
+  for(let y=1;y<h-1;y++)for(let x0=1;x0<w-1;x0++){
+    const i=(y*w+x0)*4,a=src[i+3];if(!a)continue;let r=src[i]*gr,g=src[i+1]*gg,b=src[i+2]*gb;
+    const lum=.2126*r+.7152*g+.0722*b;if(lum<145){const lift=p.shadow*(1-lum/145);r+=lift;g+=lift;b+=lift}
+    if(isLikelySkin(src[i],src[i+1],src[i+2],a)){
+      let rr=src[i],ggg=src[i+1],bb=src[i+2],cnt=1;for(const off of offsets){const j=i+off;if(src[j+3]>40){rr+=src[j];ggg+=src[j+1];bb+=src[j+2];cnt++}}
+      const br=rr/cnt,bg=ggg/cnt,bl=bb/cnt;r=r*(1-p.smooth)+br*p.smooth;g=g*(1-p.smooth)+bg*p.smooth;b=b*(1-p.smooth)+bl*p.smooth;
+    }
+    d[i]=Math.max(0,Math.min(255,r));d[i+1]=Math.max(0,Math.min(255,g));d[i+2]=Math.max(0,Math.min(255,b));
+  }
+  x.putImageData(im,0,0);return c.toDataURL('image/png',1)
+}
+function updateQualityNotice(w,h){const el=$('qualityNotice');if(!el)return;const [mmW,mmH]=photoSize(),dpi=outputDpi(),needW=mmToPx(mmW,dpi),needH=mmToPx(mmH,dpi),ratio=Math.min(w/needW,h/needH);el.classList.remove('hidden','ok');if(ratio<.82){el.textContent=`Low-resolution source: ${w}×${h}px. Final ${needW}×${needH}px output is possible, but fine detail cannot be fully recreated.`}else{el.textContent=`Source quality looks suitable: ${w}×${h}px for the selected output.`;el.classList.add('ok')}}
+async function rebuildRetouchPreview(record=true){if(!workingBaseDataUrl||!fabricCanvas)return;status('Applying natural studio retouch…');retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);displayingBefore=false;await setSubjectFromDataUrl(retouchedDataUrl,$('autoRetouch').checked?'Photo (Retouched)':'Photo');syncCompareButtons();if(record)saveHistory();status($('autoRetouch').checked?'Natural studio retouch applied. Use Before / After to compare.':'Retouch disabled; original working photo restored.','ok')}
+function syncCompareButtons(){$('beforeBtn')?.classList.toggle('active',displayingBefore);$('afterBtn')?.classList.toggle('active',!displayingBefore)}
+$('beforeBtn')?.addEventListener('click',async()=>{if(!workingBaseDataUrl||!fabricCanvas)return;displayingBefore=true;await setSubjectFromDataUrl(workingBaseDataUrl,'Photo (Before)');syncCompareButtons();status('Before view: retouch temporarily hidden.','ok')});
+$('afterBtn')?.addEventListener('click',async()=>{if(!workingBaseDataUrl||!fabricCanvas)return;displayingBefore=false;if(!retouchedDataUrl)retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);await setSubjectFromDataUrl(retouchedDataUrl,$('autoRetouch').checked?'Photo (Retouched)':'Photo');syncCompareButtons();status('After view restored.','ok')});
+$('autoRetouch')?.addEventListener('change',()=>rebuildRetouchPreview(true));
+$('retouchStrength')?.addEventListener('change',()=>rebuildRetouchPreview(true));
+
 $('photoInput').addEventListener('change',async e=>{
   const f=e.target.files?.[0];if(!f)return;
   if(!f.type.startsWith('image/')){status('Please select an image file.','error');return}
   sourceFile=f;$('selectedFileName').textContent=f.name;status('Loading and checking photo…');
   try{
-    const normalized=await normalizeImageFile(f);sourceDataUrl=normalized.dataUrl;originalImageEl=await imageFromUrl(sourceDataUrl);
-    initCanvas();await setSubjectFromDataUrl(sourceDataUrl,'Photo');
+    const normalized=await normalizeImageFile(f);sourceDataUrl=normalized.dataUrl;workingBaseDataUrl=sourceDataUrl;retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);displayingBefore=false;originalImageEl=await imageFromUrl(sourceDataUrl);updateQualityNotice(normalized.width,normalized.height);
+    initCanvas();await setSubjectFromDataUrl(retouchedDataUrl,$('autoRetouch')?.checked?'Photo (Retouched)':'Photo');syncCompareButtons();
     $('placeholder').classList.add('hidden');$('canvasWrap').classList.remove('hidden');$('createBtn').disabled=false;$('resetBtn').disabled=false;syncFaceGuide();
     history=[];historyIndex=-1;saveHistory();setTimeout(()=>{historyIndex=history.length-1;updateHistoryButtons()},140);
     status(`Photo loaded: ${normalized.width} × ${normalized.height}px. Editor preview is optimized; HD export remains at the selected final DPI.`,'ok');
@@ -80,8 +113,8 @@ $('photoInput').addEventListener('change',async e=>{
   }catch(err){console.error(err);sourceDataUrl=null;status('This photo could not be decoded correctly. Please convert it to JPG/PNG/WebP or try another copy of the photo.','error')}
 });
 
-$('removeBg').addEventListener('change',async()=>{if(!sourceFile)return;if($('removeBg').checked)await removeBackgroundNow();else{removedBlob=null;await setSubjectFromDataUrl(sourceDataUrl,'Photo');saveHistory();status('Original background restored.','ok')}});
-async function removeBackgroundNow(){if(removalBusy||!sourceFile)return;removalBusy=true;$('removeBg').disabled=true;$('createBtn').disabled=true;status('AI background removal starting… first run may take longer.');try{const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');const removeBackground=mod.default||mod.removeBackground;removedBlob=await removeBackground(sourceFile,{model:'isnet',progress:(key,current,total)=>{if(total)status(`Background remover: ${key} ${Math.round(current/total*100)}%`)}});const dataUrl=await blobToDataURL(removedBlob);await setSubjectFromDataUrl(dataUrl,'Subject (BG Removed)');saveHistory();status('Background removed. Subject is now a separate editable layer.','ok')}catch(err){console.error(err);$('removeBg').checked=false;status('Background removal failed. Check internet once and refresh.','error')}finally{removalBusy=false;$('removeBg').disabled=false;$('createBtn').disabled=false;refreshLayers()}}
+$('removeBg').addEventListener('change',async()=>{if(!sourceFile)return;if($('removeBg').checked)await removeBackgroundNow();else{removedBlob=null;workingBaseDataUrl=sourceDataUrl;retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);displayingBefore=false;await setSubjectFromDataUrl(retouchedDataUrl,$('autoRetouch')?.checked?'Photo (Retouched)':'Photo');syncCompareButtons();saveHistory();status('Original background restored.','ok')}});
+async function removeBackgroundNow(){if(removalBusy||!sourceFile)return;removalBusy=true;$('removeBg').disabled=true;$('createBtn').disabled=true;status('AI background removal starting… first run may take longer.');try{const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');const removeBackground=mod.default||mod.removeBackground;removedBlob=await removeBackground(sourceFile,{model:'isnet',progress:(key,current,total)=>{if(total)status(`Background remover: ${key} ${Math.round(current/total*100)}%`)}});const dataUrl=await blobToDataURL(removedBlob);workingBaseDataUrl=dataUrl;retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);displayingBefore=false;await setSubjectFromDataUrl(retouchedDataUrl,$('autoRetouch')?.checked?'Subject (BG Removed + Retouched)':'Subject (BG Removed)');syncCompareButtons();saveHistory();status('Background removed. Subject is a separate editable layer and studio cleanup has been applied.','ok')}catch(err){console.error(err);$('removeBg').checked=false;status('Background removal failed. Check internet once and refresh.','error')}finally{removalBusy=false;$('removeBg').disabled=false;$('createBtn').disabled=false;refreshLayers()}}
 
 $('bgUpload').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f||!fabricCanvas)return;try{const dataUrl=await fileToDataURL(f),img=await imageFromUrl(dataUrl);if(backgroundObj)fabricCanvas.remove(backgroundObj);backgroundObj=makeFabricImage(img,'Background Image','backgroundImage');placeCover(backgroundObj);fabricCanvas.add(backgroundObj);fabricCanvas.sendToBack(backgroundObj);if(backgroundRect)fabricCanvas.sendToBack(backgroundRect);fabricCanvas.setActiveObject(backgroundObj);fabricCanvas.requestRenderAll();refreshLayers();saveHistory();status('Background image added. Drag, resize or rotate it to adjust.','ok')}catch(err){console.error(err);status('Background image could not be loaded.','error')}});
 
@@ -176,7 +209,7 @@ document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',asyn
 function dl(url,name){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove()}
 $('downloadJpg').onclick=()=>dl(exportSingle('image/jpeg'),`digital-photo-${outputDpi()}dpi.jpg`);$('downloadPng').onclick=()=>dl(exportSingle('image/png'),`digital-photo-${outputDpi()}dpi.png`);$('downloadSheet').onclick=async()=>{await renderSheet();dl($('sheetCanvas').toDataURL('image/jpeg',1),`digital-photo-print-sheet-${outputDpi()}dpi.jpg`)};['paperSize','copies','orientation'].forEach(id=>$(id).addEventListener('change',()=>{if(!$('sheetPreviewWrap').classList.contains('hidden'))renderSheet()}));
 
-$('resetBtn').addEventListener('click',()=>{sourceFile=null;sourceDataUrl=null;originalImageEl=null;removedBlob=null;subjectObj=null;backgroundObj=null;backgroundRect=null;cropGuide=null;cropTarget=null;history=[];historyIndex=-1;if(fabricCanvas){fabricCanvas.dispose();fabricCanvas=null}$('photoInput').value='';$('selectedFileName').textContent='No photo selected';$('bgUpload').value='';$('removeBg').checked=false;$('nepalPreset').value='manual';$('borderEnabled').checked=false;$('borderSize').value='1';$('borderColor').value='#ffffff';$('borderHex').value='#ffffff';updateBorderPreview();document.querySelectorAll('.crop-only').forEach(b=>b.classList.add('hidden'));$('placeholder').classList.remove('hidden');$('canvasWrap').classList.add('hidden');$('faceGuide')?.classList.add('hidden');$('sheetPreviewWrap').classList.add('hidden');$('previewStage').classList.remove('hidden');$('resultTabs').classList.add('hidden');$('actions').classList.add('hidden');$('backEditorBtn').classList.add('hidden');$('createBtn').disabled=true;$('resetBtn').disabled=true;$('layersList').innerHTML='<div class="empty-layers">No layers yet</div>';updateHistoryButtons();status('Select a photo to begin.')});
+$('resetBtn').addEventListener('click',()=>{sourceFile=null;sourceDataUrl=null;workingBaseDataUrl=null;retouchedDataUrl=null;displayingBefore=false;originalImageEl=null;removedBlob=null;subjectObj=null;backgroundObj=null;backgroundRect=null;cropGuide=null;cropTarget=null;history=[];historyIndex=-1;if(fabricCanvas){fabricCanvas.dispose();fabricCanvas=null}$('photoInput').value='';$('selectedFileName').textContent='No photo selected';$('bgUpload').value='';$('removeBg').checked=false;$('nepalPreset').value='manual';$('borderEnabled').checked=false;$('borderSize').value='1';$('borderColor').value='#ffffff';$('borderHex').value='#ffffff';updateBorderPreview();document.querySelectorAll('.crop-only').forEach(b=>b.classList.add('hidden'));$('placeholder').classList.remove('hidden');$('canvasWrap').classList.add('hidden');$('faceGuide')?.classList.add('hidden');$('sheetPreviewWrap').classList.add('hidden');$('previewStage').classList.remove('hidden');$('resultTabs').classList.add('hidden');$('actions').classList.add('hidden');$('backEditorBtn').classList.add('hidden');$('createBtn').disabled=true;$('resetBtn').disabled=true;$('layersList').innerHTML='<div class="empty-layers">No layers yet</div>';updateHistoryButtons();status('Select a photo to begin.')});
 
 updateInfo();updateHistoryButtons();
 
@@ -271,6 +304,24 @@ relinkObjects=function(){_relinkObjectsV2();suitObj=(fabricCanvas?.getObjects()|
 
 // Better UI state for professional controls.
 const _uiStateV2=uiState;
-uiState=function(){return {..._uiStateV2(),printMargin:$('printMargin')?.value,printGap:$('printGap')?.value,cutMarks:$('cutMarks')?.value,targetKb:$('targetKb')?.value,guideToggle:$('guideToggle')?.checked,suitPreset:$('suitPreset')?.value}};
+uiState=function(){return {..._uiStateV2(),printMargin:$('printMargin')?.value,printGap:$('printGap')?.value,cutMarks:$('cutMarks')?.value,targetKb:$('targetKb')?.value,guideToggle:$('guideToggle')?.checked,suitPreset:$('suitPreset')?.value,autoRetouch:$('autoRetouch')?.checked,retouchStrength:$('retouchStrength')?.value}};
 
 window.addEventListener('resize',syncFaceGuide);
+
+/* ===== v2.1 Precision Photo-Edge Border ===== */
+function removeLegacySubjectStroke(){if(subjectObj)subjectObj.set({stroke:null,strokeWidth:0})}
+function syncPhotoBorder(){
+  if(!fabricCanvas)return;
+  removeLegacySubjectStroke();
+  const enabled=!!($('borderEnabled')?.checked&&subjectObj&&borderSizeMm()>0);
+  if(!enabled){if(photoBorderObj){fabricCanvas.remove(photoBorderObj);photoBorderObj=null}fabricCanvas.requestRenderAll();return}
+  const [mmW]=photoSize(),px=Math.max(1,(fabricCanvas.width/mmW)*borderSizeMm()),color=$('borderColor')?.value||'#ffffff';
+  if(!photoBorderObj){photoBorderObj=new Fabric.Rect({name:'Photo Edge Border',layerType:'photoBorder',fill:'transparent',selectable:false,evented:false,originX:'center',originY:'center',excludeFromExport:false,strokeUniform:true});fabricCanvas.add(photoBorderObj)}
+  photoBorderObj.set({left:subjectObj.left,top:subjectObj.top,width:subjectObj.width,height:subjectObj.height,scaleX:subjectObj.scaleX,scaleY:subjectObj.scaleY,angle:subjectObj.angle,flipX:subjectObj.flipX,flipY:subjectObj.flipY,stroke:color,strokeWidth:px,visible:subjectObj.visible!==false});photoBorderObj.setCoords();
+  const si=fabricCanvas.getObjects().indexOf(subjectObj);if(si>=0)fabricCanvas.moveTo(photoBorderObj,Math.min(si+1,fabricCanvas.size()-1));fabricCanvas.requestRenderAll();
+}
+applyPhotoBorder=function(render=true){const wrap=$('canvasWrap');if(wrap){wrap.style.borderWidth='0';wrap.style.borderColor='transparent'}$('borderControls')?.classList.toggle('disabled-control',!$('borderEnabled')?.checked);syncPhotoBorder();if(render)fabricCanvas?.requestRenderAll()};
+const _relinkObjectsV21=relinkObjects;relinkObjects=function(){_relinkObjectsV21();photoBorderObj=(fabricCanvas?.getObjects()||[]).find(o=>o.layerType==='photoBorder')||null;syncPhotoBorder()};
+const _refreshLayersV21=refreshLayers;refreshLayers=function(){_refreshLayersV21();document.querySelectorAll('.layer-item').forEach(row=>{if(/Photo Edge Border/i.test(row.querySelector('.layer-name')?.textContent||''))row.remove()})};
+const _bindCanvasEventsV21=bindCanvasEvents;bindCanvasEvents=function(){_bindCanvasEventsV21();['object:moving','object:scaling','object:rotating','object:skewing'].forEach(ev=>fabricCanvas.on(ev,e=>{if(e.target===subjectObj)syncPhotoBorder()}));fabricCanvas.on('object:modified',e=>{if(e.target===subjectObj)syncPhotoBorder()});};
+const _deleteActiveLayerV21=deleteActiveLayer;deleteActiveLayer=function(){const o=fabricCanvas?.getActiveObject();_deleteActiveLayerV21();if(o===subjectObj||!subjectObj){if(photoBorderObj&&fabricCanvas){fabricCanvas.remove(photoBorderObj);photoBorderObj=null;fabricCanvas.requestRenderAll()}}};
