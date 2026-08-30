@@ -13,6 +13,20 @@ function outputDpi(){return Number($('outputDpi')?.value||300)}
 function photoSize(){return $('photoSize').value==='custom'?[Number($('customWidth').value)||35,Number($('customHeight').value)||45]:sizePresets[$('photoSize').value]}
 function editorDims(){const [w,h]=photoSize();const maxH=Math.min(560,Math.max(360,window.innerHeight*0.60)),maxW=470,ratio=w/h;let H=maxH,W=H*ratio;if(W>maxW){W=maxW;H=W/ratio}return [Math.round(W),Math.round(H)]}
 function status(msg,type=''){const el=$('status');if(!el)return;el.textContent=msg;el.className='status '+type}
+
+let processingUiActive=false;
+function setProcessingUI(percent=0,stage='Processing…',message='Please wait while your photo is being processed…'){
+  const overlay=$('processingOverlay'),bar=$('processingProgressBar'),pct=$('processingPercent'),stageEl=$('processingStage'),msg=$('processingMessage'),prog=overlay?.querySelector('.processing-progress');
+  const n=Math.max(0,Math.min(100,Math.round(Number(percent)||0)));
+  if(bar)bar.style.width=`${n}%`;if(pct)pct.textContent=`${n}%`;if(stageEl)stageEl.textContent=stage;if(msg)msg.textContent=message;if(prog)prog.setAttribute('aria-valuenow',String(n));
+}
+function showProcessingUI(title='Processing Photo',message='Please wait while your photo is being processed…'){
+  processingUiActive=true;const overlay=$('processingOverlay');if(!overlay)return;
+  $('processingTitle').textContent=title;setProcessingUI(2,'Preparing…',message);overlay.classList.remove('hidden');document.body.classList.add('processing-active');overlay.setAttribute('aria-busy','true');
+}
+function hideProcessingUI(){processingUiActive=false;const overlay=$('processingOverlay');if(!overlay)return;overlay.classList.add('hidden');overlay.setAttribute('aria-busy','false');document.body.classList.remove('processing-active')}
+window.addEventListener('beforeunload',e=>{if(!processingUiActive)return;e.preventDefault();e.returnValue=''});
+
 function borderSizeMm(){return $('borderEnabled')?.checked?Math.max(0,Number($('borderSize')?.value||0)):0}
 function applyPhotoBorder(render=true){
   const wrap=$('canvasWrap');if(wrap){wrap.style.borderWidth='0';wrap.style.borderColor='transparent'}
@@ -114,7 +128,57 @@ $('photoInput').addEventListener('change',async e=>{
 });
 
 $('removeBg').addEventListener('change',async()=>{if(!sourceFile)return;if($('removeBg').checked)await removeBackgroundNow();else{removedBlob=null;workingBaseDataUrl=sourceDataUrl;retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);displayingBefore=false;await setSubjectFromDataUrl(retouchedDataUrl,$('autoRetouch')?.checked?'Photo (Retouched)':'Photo');syncCompareButtons();saveHistory();status('Original background restored.','ok')}});
-async function removeBackgroundNow(){if(removalBusy||!sourceFile)return;removalBusy=true;$('removeBg').disabled=true;$('createBtn').disabled=true;status('AI background removal starting… first run may take longer.');try{const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');const removeBackground=mod.default||mod.removeBackground;removedBlob=await removeBackground(sourceFile,{model:'isnet',progress:(key,current,total)=>{if(total)status(`Background remover: ${key} ${Math.round(current/total*100)}%`)}});const dataUrl=await blobToDataURL(removedBlob);workingBaseDataUrl=dataUrl;retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);displayingBefore=false;await setSubjectFromDataUrl(retouchedDataUrl,$('autoRetouch')?.checked?'Subject (BG Removed + Retouched)':'Subject (BG Removed)');syncCompareButtons();saveHistory();status('Background removed. Subject is a separate editable layer and studio cleanup has been applied.','ok')}catch(err){console.error(err);$('removeBg').checked=false;status('Background removal failed. Check internet once and refresh.','error')}finally{removalBusy=false;$('removeBg').disabled=false;$('createBtn').disabled=false;refreshLayers()}}
+async function removeBackgroundNow(){
+  if(removalBusy||!sourceFile)return;
+  removalBusy=true;
+  $('removeBg').disabled=true;
+  $('createBtn').disabled=true;
+  showProcessingUI('Removing Background','AI is separating the person from the background. The first run may take a little longer.');
+  status('AI background removal starting… first run may take longer.');
+  try{
+    setProcessingUI(5,'Loading AI engine…');
+    const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');
+    const removeBackground=mod.default||mod.removeBackground;
+    setProcessingUI(12,'Preparing AI model…');
+    removedBlob=await removeBackground(sourceFile,{
+      model:'isnet',
+      progress:(key,current,total)=>{
+        if(total){
+          const raw=Math.max(0,Math.min(100,current/total*100));
+          const mapped=Math.round(12+raw*.73);
+          const label=String(key||'AI processing').replace(/[-_]/g,' ');
+          setProcessingUI(mapped,`${label}…`);
+          status(`Background remover: ${label} ${Math.round(raw)}%`);
+        }
+      }
+    });
+    setProcessingUI(88,'Building transparent subject…');
+    const dataUrl=await blobToDataURL(removedBlob);
+    workingBaseDataUrl=dataUrl;
+    setProcessingUI(92,'Applying studio cleanup…');
+    retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);
+    displayingBefore=false;
+    setProcessingUI(96,'Updating editor layers…');
+    await setSubjectFromDataUrl(retouchedDataUrl,$('autoRetouch')?.checked?'Subject (BG Removed + Retouched)':'Subject (BG Removed)');
+    syncCompareButtons();
+    saveHistory();
+    setProcessingUI(100,'Completed','Background removal completed successfully.');
+    status('Background removed. Subject is a separate editable layer and studio cleanup has been applied.','ok');
+    await new Promise(r=>setTimeout(r,450));
+  }catch(err){
+    console.error(err);
+    $('removeBg').checked=false;
+    setProcessingUI(100,'Could not complete','Background removal failed. Please check your internet connection and try again.');
+    status('Background removal failed. Check internet once and refresh.','error');
+    await new Promise(r=>setTimeout(r,900));
+  }finally{
+    hideProcessingUI();
+    removalBusy=false;
+    $('removeBg').disabled=false;
+    $('createBtn').disabled=false;
+    refreshLayers();
+  }
+}
 
 $('bgUpload').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f||!fabricCanvas)return;try{const dataUrl=await fileToDataURL(f),img=await imageFromUrl(dataUrl);if(backgroundObj)fabricCanvas.remove(backgroundObj);backgroundObj=makeFabricImage(img,'Background Image','backgroundImage');placeCover(backgroundObj);fabricCanvas.add(backgroundObj);fabricCanvas.sendToBack(backgroundObj);if(backgroundRect)fabricCanvas.sendToBack(backgroundRect);fabricCanvas.setActiveObject(backgroundObj);fabricCanvas.requestRenderAll();refreshLayers();saveHistory();status('Background image added. Drag, resize or rotate it to adjust.','ok')}catch(err){console.error(err);status('Background image could not be loaded.','error')}});
 
