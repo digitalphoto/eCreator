@@ -31,3 +31,9 @@ footer{max-width:1280px;margin:12px auto 24px;padding:15px 18px;text-align:cente
 .retouch-card{border:1px solid #dce8ff;background:linear-gradient(180deg,#fbfdff,#f5f9ff)}
 .retouch-actions{display:flex;gap:8px;flex-wrap:wrap}.retouch-actions .ghost-btn.active{background:#0b5ed7;color:#fff;border-color:#0b5ed7}
 .quality-notice{margin-top:8px;padding:9px 10px;border-radius:10px;font-size:12px;line-height:1.4;background:#fff7db;border:1px solid #f0d676;color:#684f00}.quality-notice.ok{background:#ecfff4;border-color:#a9e3c1;color:#16643a}.quality-notice.hidden{display:none}
+
+
+/* ===== v2.2 Precision Studio ===== */
+.workflow-strip{max-width:1280px;margin:10px auto 0;padding:0 18px;display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.workflow-strip span{display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 6px;border:1px solid #dbe5f2;border-radius:10px;background:#fff;font-size:11px;font-weight:800;color:#526076}.workflow-strip b{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#0b5ed7;color:#fff;font-size:10px}.field-grid.four{grid-template-columns:repeat(4,1fr)}.text-card{background:#fbfdff}.canvas-wrap{background:transparent}.precision-note{font-size:10px;color:#667085;margin-top:5px}
+@media(max-width:760px){.workflow-strip{grid-template-columns:repeat(5,minmax(82px,1fr));overflow:auto;padding-bottom:3px}.workflow-strip span{white-space:nowrap}.field-grid.four{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.field-grid.four{grid-template-columns:1fr}}
