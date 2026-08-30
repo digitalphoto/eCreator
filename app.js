@@ -154,7 +154,8 @@ async function removeBackgroundNow(){
     });
     setProcessingUI(88,'Building transparent subject…');
     const dataUrl=await blobToDataURL(removedBlob);
-    workingBaseDataUrl=dataUrl;
+    setProcessingUI(90,'Matching final photo frame…');
+    workingBaseDataUrl=await fitCutoutToFinalFrame(dataUrl);
     setProcessingUI(92,'Applying studio cleanup…');
     retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);
     displayingBefore=false;
@@ -416,12 +417,33 @@ placeSubject=function(obj){
   if(!fabricCanvas||!obj)return;
   const W=fabricCanvas.width,H=fabricCanvas.height;
   const isCutout=!!removedBlob;
-  const sc=isCutout?Math.min(W/obj.width,H/obj.height)*.92:Math.max(W/obj.width,H/obj.height);
-  obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0});obj.setCoords();
+  // BG-removed subjects are first placed on a transparent canvas with the
+  // exact final-photo aspect ratio. Keep that whole transparent frame aligned
+  // with the editor frame; never stretch the person itself.
+  const sc=isCutout?Math.min(W/obj.width,H/obj.height):Math.max(W/obj.width,H/obj.height);
+  obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0,originX:'center',originY:'center'});obj.setCoords();
 };
 
+async function fitCutoutToFinalFrame(dataUrl){
+  if(!fabricCanvas)return dataUrl;
+  const img=await imageFromUrl(dataUrl),W=Math.max(1,Math.round(fabricCanvas.width)),H=Math.max(1,Math.round(fabricCanvas.height));
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const x=c.getContext('2d',{alpha:true});x.clearRect(0,0,W,H);x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';
+  // Preserve person proportions. The transparent bitmap itself is exactly the
+  // final photo frame, while the cut-out person is contained naturally inside.
+  const sc=Math.min(W/(img.naturalWidth||img.width),H/(img.naturalHeight||img.height))*.92;
+  const dw=(img.naturalWidth||img.width)*sc,dh=(img.naturalHeight||img.height)*sc;
+  x.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
+  return c.toDataURL('image/png',1);
+}
+function syncBackgroundFrame(){
+  if(!fabricCanvas||!backgroundRect)return;
+  backgroundRect.set({left:0,top:0,width:fabricCanvas.width,height:fabricCanvas.height,scaleX:1,scaleY:1,angle:0,originX:'left',originY:'top'});
+  backgroundRect.setCoords();fabricCanvas.sendToBack(backgroundRect);
+}
 function setBackgroundMode(){
   if(!backgroundRect)return;
+  syncBackgroundFrame();
   const transparent=$('bgMode')?.value==='transparent';
   backgroundRect.set({fill:transparent?'rgba(0,0,0,0)':($('bgColor')?.value||'#ffffff')});
   fabricCanvas?.requestRenderAll();
@@ -505,5 +527,6 @@ $('customUnit')?.addEventListener('change',()=>{rebuildCanvasKeepObjects();updat
 const _uiStateV22=uiState;uiState=function(){return {..._uiStateV22(),customUnit:$('customUnit')?.value,customDpi:$('customDpi')?.value,bgMode:$('bgMode')?.value,sharpness:$('sharpness')?.value,textOverlayEnabled:$('textOverlayEnabled')?.checked,overlayName:$('overlayName')?.value,overlayDate:$('overlayDate')?.value,overlayPosition:$('overlayPosition')?.value}};
 
 // Recalculate preview border after resize/undo and keep transparent mode correct.
-const _rebuildCanvasKeepObjectsV22=rebuildCanvasKeepObjects;rebuildCanvasKeepObjects=function(record=true){_rebuildCanvasKeepObjectsV22(record);setBackgroundMode();syncPhotoBorder()};
+const _rebuildCanvasKeepObjectsV22=rebuildCanvasKeepObjects;rebuildCanvasKeepObjects=function(record=true){_rebuildCanvasKeepObjectsV22(record);syncBackgroundFrame();setBackgroundMode();syncPhotoBorder()};
+const _relinkObjectsV24=relinkObjects;relinkObjects=function(){_relinkObjectsV24();syncBackgroundFrame();setBackgroundMode();syncPhotoBorder()};
 setBackgroundMode();updateInfo();syncPhotoBorder();
