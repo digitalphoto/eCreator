@@ -18,7 +18,7 @@
       <div class="brand-icon">📸</div>
       <div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div>
     </div>
-    <div class="badge">v1.2.2</div>
+    <div class="badge">v1.2.3</div>
   </header>
 
   <div class="global-toolbar" id="globalToolbar">
@@ -76,6 +76,14 @@
 
       <div class="switch-row"><div><strong>Auto Studio Enhance</strong><small>Brightness, contrast & clarity</small></div><label class="switch"><input id="autoEnhance" type="checkbox" checked><span class="slider"></span></label></div>
       <div class="field-grid three compact"><div class="field"><label>Brightness</label><input id="brightness" type="range" min="70" max="135" value="104"></div><div class="field"><label>Contrast</label><input id="contrast" type="range" min="70" max="140" value="108"></div><div class="field"><label>Saturation</label><input id="saturation" type="range" min="70" max="135" value="102"></div></div>
+
+      <div class="border-card">
+        <div class="switch-row border-switch-row"><div><strong>Outside Border</strong><small>Add border outside the finished photo</small></div><label class="switch"><input id="borderEnabled" type="checkbox"><span class="slider"></span></label></div>
+        <div id="borderControls" class="border-controls disabled-control">
+          <div class="field"><label>Border Size (mm)</label><div class="stepper"><button id="borderMinus" type="button" aria-label="Decrease border">−</button><input id="borderSize" type="number" min="0" max="20" step="0.5" value="1"><button id="borderPlus" type="button" aria-label="Increase border">+</button></div></div>
+          <div class="field"><label>Border Color</label><div class="color-wrap"><input id="borderColor" type="color" value="#ffffff"><input id="borderHex" type="text" value="#ffffff" maxlength="7"></div></div>
+        </div>
+      </div>
 
       <div class="field-grid two"><div class="field"><label for="copies">Copies</label><select id="copies"><option value="auto">Auto Fit</option><option>1</option><option>2</option><option>4</option><option>6</option><option>8</option><option>9</option><option>12</option><option>16</option><option>20</option><option>24</option></select></div><div class="field"><label for="orientation">Paper Orientation</label><select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></div></div>
 
