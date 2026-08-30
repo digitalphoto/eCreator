@@ -50,3 +50,10 @@ footer{max-width:1280px;margin:12px auto 24px;padding:15px 18px;text-align:cente
 body.processing-active{overflow:hidden}body.processing-active .processing-overlay{user-select:none}
 @keyframes processingSpin{to{transform:rotate(360deg)}}
 @media(max-width:560px){.processing-card{padding:20px 17px;border-radius:16px}.processing-spinner{width:46px;height:46px}.processing-card h3{font-size:17px}}
+
+/* ===== v2.6 Pro Studio ===== */
+.quality-checks{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.quality-checks span{font-size:10px;padding:5px 8px;border-radius:999px;background:#eef7ff;color:#175ea8;border:1px solid #d7e9fb}
+.processing-time{display:flex;justify-content:space-between;gap:12px;margin-top:10px;font-size:10px;color:#667085}
+.processing-cancel{margin-top:12px;border:1px solid #d0d7e2;background:#fff;color:#344054;border-radius:9px;padding:8px 18px;font-weight:700;cursor:pointer}.processing-cancel:disabled{opacity:.5;cursor:not-allowed}
+body.master-locked .editor-toolbar button{opacity:.55}
+@media(max-width:700px){.quality-card .mini-actions{display:grid;grid-template-columns:1fr 1fr}.quality-card .mini-actions button:last-child{grid-column:1/-1}}
