@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digital Photo Studio</title>
+  <meta name="theme-color" content="#0b5ed7" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=3.0.3" />
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script defer src="app.js?v=3.0.3"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="brand-icon">📸</div>
+      <div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div>
+    </div>
+    <div class="badge">v3.0.3 Matched Crop-First</div>
+  </header>
+
+  <div class="global-toolbar" id="globalToolbar">
+    <button id="backEditorBtn" class="tool-btn hidden" title="Back to Editor">← Back to Editor</button>
+    <button id="undoBtn" class="tool-btn" disabled title="Undo (Ctrl+Z)">↶ Undo</button>
+    <button id="redoBtn" class="tool-btn" disabled title="Redo (Ctrl+Y / Ctrl+Shift+Z)">↷ Redo</button>
+    <span class="toolbar-spacer"></span>
+    <span class="shortcut-note">Ctrl+Z Undo • Ctrl+Y Redo</span>
+  </div>
+
+  <div class="workflow-strip" aria-label="Photo workflow"><span><b>1</b> Size</span><span><b>2</b> Crop</span><span><b>3</b> Background</span><span><b>4</b> Enhance</span><span><b>5</b> Download</span></div>
+
+  <main class="studio-shell">
+    <aside class="panel controls-panel">
+      <h2>Photo Settings</h2>
+      <label class="upload-box" for="photoInput">
+        <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/*" hidden>
+        <span class="upload-icon">＋</span><strong>Select Photo</strong><small>Camera, Gallery or File</small>
+        <span id="selectedFileName" class="selected-file">No photo selected</span>
+      </label>
+
+      <div class="field">
+        <label for="nepalPreset">Nepal Form Preset</label>
+        <select id="nepalPreset">
+          <option value="manual">Manual / Standard Size</option>
+          <option value="general35x45">Nepal General Form – 35 × 45 mm</option>
+          <option value="passport35x45">Nepal Passport / Travel Form – 35 × 45 mm</option>
+          <option value="citizenship35x45">Citizenship / ID Type – 35 × 45 mm</option>
+          <option value="loksewa35x45">Lok Sewa / Online Application – 35 × 45 mm</option>
+          <option value="bank35x45">Bank / KYC – 35 × 45 mm</option>
+          <option value="school35x45">School / College Form – 35 × 45 mm</option>
+          <option value="licence35x45">Driving Licence Type – 35 × 45 mm</option>
+          <option value="custom">Custom Nepal Form Size</option>
+        </select>
+        <small class="field-help">Common print presets. Use Custom when a form specifies a different size.</small>
+      </div>
+
+      <div class="pro-card size-library-card">
+        <div class="section-title-row"><div><strong>Photo Size Library</strong><small>Search common / country / document sizes</small></div><span id="activePresetBadge" class="mini-badge">Nepal 35×45</span></div>
+        <div class="search-wrap"><input id="sizeSearch" type="search" placeholder="Search: Nepal, USA, 35x45, visa, passport..."><span>⌕</span></div>
+        <div id="sizePresetList" class="size-preset-list"></div>
+      </div>
+
+      <div class="field-grid two">
+        <div class="field"><label for="photoSize">Standard Photo Size</label><select id="photoSize">
+          <option value="35x45">Passport 35 × 45 mm</option><option value="51x51">US Visa 2 × 2 inch</option><option value="25x30">25 × 30 mm</option><option value="30x40">30 × 40 mm</option><option value="33x48">33 × 48 mm</option><option value="50x50">50 × 50 mm</option><option value="custom">Custom Size</option>
+        </select></div>
+        <div class="field"><label for="paperSize">Paper Size</label><select id="paperSize"><option value="4x6">4R / 4 × 6 inch</option><option value="5x7">5 × 7 inch</option><option value="6x8">6 × 8 inch</option><option value="8x10">8 × 10 inch</option><option value="a4">A4</option><option value="a5">A5</option></select></div>
+      </div>
+      <div id="customSizeBox" class="field-grid three hidden"><div class="field"><label>Width</label><input id="customWidth" type="number" min="1" max="3000" step="0.1" value="35"></div><div class="field"><label>Height</label><input id="customHeight" type="number" min="1" max="3000" step="0.1" value="45"></div><div class="field"><label>Unit</label><select id="customUnit"><option value="mm">mm</option><option value="cm">cm</option><option value="inch">inch</option><option value="px">px</option></select></div></div>
+
+      <div class="field-grid three">
+        <div class="field"><label for="outputDpi">Output Quality</label><select id="outputDpi"><option value="300">Studio 300 DPI</option><option value="600">HD 600 DPI</option><option value="custom">Custom DPI</option></select></div>
+        <div id="customDpiBox" class="field hidden"><label for="customDpi">Custom DPI</label><input id="customDpi" type="number" min="72" max="1200" step="1" value="300"></div>
+        <div class="field"><label>Final Pixel Size</label><div id="pixelInfo" class="info-box">413 × 531 px</div></div>
+      </div>
+
+      <div class="switch-row"><div><strong>Background Remover</strong><small>Remove background and create Subject layer</small></div><label class="switch"><input id="removeBg" type="checkbox"><span class="slider"></span></label></div>
+
+      <div class="field-grid three">
+        <div class="field"><label for="bgMode">Background Mode</label><select id="bgMode"><option value="color">Color</option><option value="transparent">Transparent</option></select></div>
+        <div class="field"><label for="bgColor">Background Color</label><div class="color-wrap"><input id="bgColor" type="color" value="#ffffff"><input id="bgHex" type="text" value="#ffffff" maxlength="7"></div></div>
+        <div class="field"><label for="bgUpload">Upload Background</label><input id="bgUpload" type="file" accept="image/*"></div>
+      </div>
+
+      <div class="pro-card suit-card">
+        <div class="section-title-row"><div><strong>Suit / Design Layer</strong><small>Add a formal suit or transparent studio design</small></div><span class="mini-badge">Layer</span></div>
+        <div class="field-grid two">
+          <div class="field"><label for="suitPreset">Built-in Suit</label><select id="suitPreset"><option value="none">None</option><option value="black">Classic Black Suit</option><option value="navy">Navy Suit</option><option value="gray">Gray Suit</option></select></div>
+          <div class="field"><label for="suitUpload">Upload Suit / PNG Design</label><input id="suitUpload" type="file" accept="image/png,image/webp,image/*"></div>
+        </div>
+        <div class="mini-actions"><button id="addSuitBtn" type="button" class="ghost-btn">＋ Add Suit</button><button id="duplicateLayerBtn" type="button" class="ghost-btn">⧉ Duplicate Layer</button></div>
+      </div>
+
+      <div class="pro-card retouch-card">
+        <div class="section-title-row"><div><strong>Auto Studio Retouch</strong><small>Natural spot, shadow, tone & noise cleanup while preserving identity</small></div><label class="switch mini-switch"><input id="autoRetouch" type="checkbox" checked><span class="slider"></span></label></div>
+        <div class="field-grid two">
+          <div class="field"><label for="retouchStrength">Retouch Strength</label><select id="retouchStrength"><option value="light">Light</option><option value="normal" selected>Normal</option><option value="strong">Strong</option></select></div>
+          <div class="field"><label>Compare</label><div class="mini-actions retouch-actions"><button id="beforeBtn" type="button" class="ghost-btn">Before</button><button id="afterBtn" type="button" class="ghost-btn active">After</button><button id="compareSliderBtn" type="button" class="ghost-btn">⇆ Compare</button></div></div>
+        </div>
+        <div id="qualityNotice" class="quality-notice hidden"></div>
+      </div>
+
+      <div class="switch-row"><div><strong>Auto Studio Enhance</strong><small>Brightness, contrast & clarity</small></div><label class="switch"><input id="autoEnhance" type="checkbox" checked><span class="slider"></span></label></div>
+      <div class="field-grid four compact"><div class="field"><label>Brightness</label><input id="brightness" type="range" min="70" max="135" value="104"></div><div class="field"><label>Contrast</label><input id="contrast" type="range" min="70" max="140" value="108"></div><div class="field"><label>Saturation</label><input id="saturation" type="range" min="70" max="135" value="102"></div><div class="field"><label>Sharpness</label><input id="sharpness" type="range" min="0" max="100" value="18"></div></div>
+
+      <div class="pro-card auto-create-card">
+        <div class="section-title-row"><div><strong>Optional Auto Position Assistant</strong><small>Optional face-position helper after your crop is confirmed</small></div><span id="faceDetectBadge" class="mini-badge">AI Face</span></div>
+        <div class="switch-row compact-switch"><div><strong>Auto Create After Upload</strong><small>Optional helper after Crop & Continue</small></div><label class="switch"><input id="autoCreateUpload" type="checkbox"><span class="slider"></span></label></div>
+        <div class="field-grid two">
+          <div class="field"><label for="faceFitMode">Face Fit</label><select id="faceFitMode"><option value="standard" selected>Standard Passport</option><option value="tight">Tight ID Crop</option><option value="relaxed">Relaxed / Visa</option></select></div>
+          <div class="field"><label>Auto Tool</label><button id="autoCreateNowBtn" type="button" class="ghost-btn">✨ Auto Create Now</button></div>
+        </div>
+        <div id="faceDetectInfo" class="face-detect-info">Waiting for photo…</div>
+      </div>
+
+      <div class="pro-card face-card">
+        <div class="section-title-row"><div><strong>Face / Position Guide</strong><small>Fine tune head position without reducing final quality</small></div><label class="switch mini-switch"><input id="guideToggle" type="checkbox" checked><span class="slider"></span></label></div>
+        <div class="nudge-grid">
+          <button type="button" data-nudge="up">↑</button><button type="button" data-nudge="scaleUp">＋ Head</button><button type="button" data-nudge="left">←</button><button type="button" data-nudge="center">◎ Center</button><button type="button" data-nudge="right">→</button><button type="button" data-nudge="down">↓</button><button type="button" data-nudge="scaleDown">− Head</button>
+        </div>
+      </div>
+
+      <div class="border-card">
+        <div class="switch-row border-switch-row"><div><strong>Final Photo Edge Border</strong><small>Border sits exactly inside the selected passport/photo size — no extra outside color or padding</small></div><label class="switch"><input id="borderEnabled" type="checkbox"><span class="slider"></span></label></div>
+        <div id="borderControls" class="border-controls disabled-control">
+          <div class="field"><label>Edge Border Size (mm)</label><div class="stepper"><button id="borderMinus" type="button" aria-label="Decrease border">−</button><input id="borderSize" type="number" min="0" max="20" step="0.5" value="1"><button id="borderPlus" type="button" aria-label="Increase border">+</button></div></div>
+          <div class="field"><label>Photo Border Color</label><div class="color-wrap"><input id="borderColor" type="color" value="#ffffff"><input id="borderHex" type="text" value="#ffffff" maxlength="7"></div></div>
+        </div>
+      </div>
+
+      <div class="pro-card text-card">
+        <div class="section-title-row"><div><strong>Name / Date on Photo</strong><small>Optional text for school, job or application photos</small></div><label class="switch mini-switch"><input id="textOverlayEnabled" type="checkbox"><span class="slider"></span></label></div>
+        <div class="field-grid three"><div class="field"><label>Name / Text</label><input id="overlayName" type="text" maxlength="60" placeholder="Optional name"></div><div class="field"><label>Date</label><input id="overlayDate" type="text" maxlength="30" placeholder="YYYY-MM-DD"></div><div class="field"><label>Text Position</label><select id="overlayPosition"><option value="bottom">Bottom</option><option value="top">Top</option></select></div></div>
+      </div>
+
+
+      <div class="pro-card quality-card">
+        <div class="section-title-row"><div><strong>Studio Quality & Performance</strong><small>Automatic composition checks, processing mode & final master validation</small></div><span id="qualityScoreBadge" class="mini-badge">Ready</span></div>
+        <div class="field-grid two">
+          <div class="field"><label for="performanceMode">Processing Mode</label><select id="performanceMode"><option value="fast">Fast</option><option value="balanced" selected>Balanced</option><option value="quality">High Quality</option></select></div>
+          <div class="field"><label>Privacy / Processing</label><div class="info-box">Local editor • AI model runs in browser</div></div>
+        </div>
+        <div id="autoQualityChecks" class="quality-checks"><span>✓ Exact frame</span><span>✓ Background sync</span><span>✓ Master export</span></div>
+        <div class="mini-actions"><button id="autoComposeBtn" type="button" class="ghost-btn">◎ Auto Passport Position</button><button id="qualityCheckBtn" type="button" class="ghost-btn">✓ Quality Check</button><button id="lockMasterBtn" type="button" class="ghost-btn">🔒 Lock Final Master</button></div>
+      </div>
+      <div class="pro-card retouch-brush-card">
+        <div class="section-title-row"><div><strong>Manual Spot Cleanup</strong><small>Click a small blemish/spot on the photo to soften it locally</small></div><span class="mini-badge">Brush</span></div>
+        <div class="field-grid two"><div class="field"><label>Brush Size</label><input id="spotBrushSize" type="range" min="4" max="60" value="18"></div><div class="field"><label>Manual Cleanup</label><button id="spotBrushBtn" type="button" class="ghost-btn">🩹 Start Spot Brush</button></div></div>
+      </div>
+
+      <div class="pro-card print-card">
+        <div class="section-title-row"><div><strong>Print Layout</strong><small>Exact copies, spacing, margins & cutting marks</small></div><span id="capacityBadge" class="mini-badge">Auto</span></div>
+        <div class="field-grid two"><div class="field"><label for="copies">Copies</label><select id="copies"><option value="auto">Auto Fit</option><option>1</option><option>2</option><option>3</option><option>4</option><option>6</option><option>8</option><option>9</option><option>10</option><option>12</option><option>16</option><option>20</option><option>24</option><option>30</option></select></div><div class="field"><label for="orientation">Paper Orientation</label><select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></div></div>
+        <div class="field-grid three compact"><div class="field"><label>Margin (mm)</label><input id="printMargin" type="number" min="0" max="30" step="0.5" value="5"></div><div class="field"><label>Gap (mm)</label><input id="printGap" type="number" min="0" max="20" step="0.5" value="2.5"></div><div class="field"><label>Cutting Marks</label><select id="cutMarks"><option value="on">On</option><option value="off">Off</option></select></div></div>
+      </div>
+
+      <div class="pro-card web-output-card">
+        <div class="section-title-row"><div><strong>Online Form Output</strong><small>Optional target file size for web forms</small></div><span class="mini-badge">JPG</span></div>
+        <div class="field-grid two"><div class="field"><label for="targetKb">Target Max KB</label><select id="targetKb"><option value="0">No Limit</option><option value="50">50 KB</option><option value="100">100 KB</option><option value="150">150 KB</option><option value="200">200 KB</option><option value="300">300 KB</option><option value="500">500 KB</option></select></div><div class="field"><label>Units</label><div class="info-box">mm • inch • px • DPI</div></div></div>
+      </div>
+
+      <button id="createBtn" class="primary-btn" disabled>✨ Create Digital Photo</button><div id="status" class="status">Select a photo to begin.</div>
+    </aside>
+
+    <section class="panel editor-panel">
+      <div class="preview-head"><div><h2>Live Preview</h2><p id="previewInfo">35 × 45 mm • 300 DPI</p></div><button id="resetBtn" class="ghost-btn" disabled>Reset</button></div>
+      <div class="editor-toolbar">
+        <button data-action="crop">✂ Crop Selection</button>
+        <button id="applyCropBtn" class="crop-only hidden" data-action="applyCrop">✓ Apply Crop</button>
+        <button id="cancelCropBtn" class="crop-only hidden" data-action="cancelCrop">✕ Cancel Crop</button>
+        <button data-action="delete" class="danger-tool">🗑 Delete Layer</button><button data-action="duplicate">⧉ Duplicate</button>
+        <button data-action="centerH">↔ Center</button><button data-action="centerV">↕ Center</button><button data-action="fit">Fit</button><button data-action="fill">Fill</button><button data-action="rotateLeft">↶ 90°</button><button data-action="rotateRight">↷ 90°</button><button data-action="flipX">⇋ Flip</button><button data-action="forward">Bring Front</button><button data-action="backward">Send Back</button>
+      </div>
+      <div class="preview-stage" id="previewStage"><div id="placeholder" class="placeholder"><div>🖼️</div><strong>Your photo preview will appear here</strong><small>Upload a portrait photo for best result</small></div><div id="canvasWrap" class="canvas-wrap hidden"><div id="faceGuide" class="face-guide hidden"><div class="head-oval"></div><div class="eye-line"></div><div class="chin-line"></div></div><canvas id="editorCanvas"></canvas></div></div>
+
+      <div class="result-tabs hidden" id="resultTabs"><button class="tab active" data-tab="editor">Digital Photo</button><button class="tab" data-tab="sheet">Print Sheet</button></div>
+      <div id="sheetPreviewWrap" class="sheet-preview hidden"><canvas id="sheetCanvas"></canvas></div>
+      <div class="actions hidden" id="actions"><button id="downloadJpg" class="secondary-btn">Download JPG</button><button id="downloadPng" class="secondary-btn">Download PNG</button><button id="downloadSheet" class="secondary-btn">Download Print Sheet</button><button id="downloadWebJpg" class="secondary-btn">Download Web JPG</button></div>
+
+      <div class="layers-panel-inline"><div class="layers-title"><div><h3>Layers</h3><small>Select a layer, then drag / resize / rotate in preview</small></div></div><div id="layersList" class="layers-list"><div class="empty-layers">No layers yet</div></div></div>
+    </section>
+  </main>
+
+  <footer><span>Designed by: <strong>Nirajan Aryal</strong></span><span class="sep">|</span><a href="tel:9851113811">9851113811</a><span class="sep">|</span><a class="facebook-link" href="https://www.facebook.com/nirajan.aryal.92" target="_blank" rel="noopener noreferrer" aria-label="Facebook profile"><svg class="facebook-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22 12.07C22 6.51 17.52 2 12 2S2 6.51 2 12.07C2 17.09 5.66 21.25 10.44 22v-7.03H7.9v-2.9h2.54V9.86c0-2.52 1.49-3.91 3.77-3.91 1.09 0 2.23.2 2.23.2v2.47h-1.25c-1.24 0-1.63.77-1.63 1.56v1.89h2.77l-.44 2.9h-2.33V22C18.34 21.25 22 17.09 22 12.07Z"/></svg><span>Facebook</span></a></footer>
+
+  <div id="processingOverlay" class="processing-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="processingTitle" aria-describedby="processingMessage">
+    <div class="processing-card">
+      <div class="processing-spinner" aria-hidden="true"></div>
+      <h3 id="processingTitle">Processing Photo</h3>
+      <p id="processingMessage">Please wait while your photo is being processed…</p>
+      <div class="processing-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="processingProgressBar" class="processing-progress-bar"></div>
+      </div>
+      <div class="processing-meta"><strong id="processingPercent">0%</strong><span id="processingStage">Preparing…</span></div>
+      <div class="processing-time"><span id="processingElapsed">0s</span><span id="processingHint">Preparing AI…</span></div>
+      <button id="cancelProcessingBtn" type="button" class="processing-cancel">Cancel</button>
+      <small class="processing-note">Other controls stay locked while processing. The first AI run may take longer while the model loads.</small>
+    </div>
+  </div>
+
+
+  <div id="cropFirstOverlay" class="crop-first-overlay hidden" aria-hidden="true">
+    <div class="crop-first-dialog">
+      <div class="crop-first-head">
+        <div><span class="step-kicker">STEP 2 OF 4</span><h2>Crop & Adjust Photo</h2><p>Set the photo composition first. The main studio will use exactly this crop.</p></div>
+        <span id="cropRatioLabel" class="mini-badge">35 × 45 mm</span>
+      </div>
+      <div class="crop-first-workspace">
+        <div id="cropFirstStage" class="crop-first-stage">
+          <canvas id="cropFirstCanvas"></canvas>
+          <div id="cropFirstBox" class="crop-first-box"><span class="crop-grid v1"></span><span class="crop-grid v2"></span><span class="crop-grid h1"></span><span class="crop-grid h2"></span></div>
+        </div>
+        <div class="crop-first-controls">
+          <label>Zoom <strong id="cropZoomValue">100%</strong></label>
+          <input id="cropZoom" type="range" min="100" max="300" value="100">
+          <div class="crop-nudge">
+            <button type="button" data-crop-nudge="up">↑</button>
+            <button type="button" data-crop-nudge="left">←</button>
+            <button type="button" id="cropCenterBtn">◎ Center</button>
+            <button type="button" data-crop-nudge="right">→</button>
+            <button type="button" data-crop-nudge="down">↓</button>
+          </div>
+          <div class="crop-first-tip">Drag the photo to position it. Use Zoom for head/shoulder size. Crop ratio follows the selected photo size.</div>
+        </div>
+      </div>
+      <div class="crop-first-actions">
+        <button id="cropChooseAnotherBtn" type="button" class="ghost-btn">← Choose Another Photo</button>
+        <button id="cropContinueBtn" type="button" class="primary-btn">Crop & Continue →</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
