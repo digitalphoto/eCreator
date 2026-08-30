@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digital Photo Studio</title>
+  <meta name="theme-color" content="#0b5ed7" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="brand-icon">📸</div>
+      <div>
+        <h1>Digital Photo Studio</h1>
+        <p>Professional Passport & Studio Photo Maker</p>
+      </div>
+    </div>
+    <div class="badge">v1.0</div>
+  </header>
+
+  <main class="container">
+    <section class="panel controls-panel">
+      <h2>Photo Settings</h2>
+
+      <label class="upload-box" for="photoInput">
+        <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
+        <span class="upload-icon">＋</span>
+        <strong>Select Photo</strong>
+        <small>Camera, Gallery or File</small>
+      </label>
+
+      <div class="field-grid two">
+        <div class="field">
+          <label for="photoSize">Standard Photo Size</label>
+          <select id="photoSize">
+            <option value="35x45">Passport 35 × 45 mm</option>
+            <option value="51x51">US Visa 2 × 2 inch</option>
+            <option value="25x30">25 × 30 mm</option>
+            <option value="30x40">30 × 40 mm</option>
+            <option value="33x48">33 × 48 mm</option>
+            <option value="50x50">50 × 50 mm</option>
+            <option value="custom">Custom Size</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="paperSize">Paper Size</label>
+          <select id="paperSize">
+            <option value="4x6">4 × 6 inch</option>
+            <option value="5x7">5 × 7 inch</option>
+            <option value="6x8">6 × 8 inch</option>
+            <option value="8x10">8 × 10 inch</option>
+            <option value="a4">A4</option>
+            <option value="a5">A5</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="customSizeBox" class="field-grid two hidden">
+        <div class="field"><label>Width (mm)</label><input id="customWidth" type="number" min="10" max="200" value="35"></div>
+        <div class="field"><label>Height (mm)</label><input id="customHeight" type="number" min="10" max="200" value="45"></div>
+      </div>
+
+      <div class="switch-row">
+        <div>
+          <strong>Background Remover</strong>
+          <small>Remove simple/solid background automatically</small>
+        </div>
+        <label class="switch">
+          <input id="removeBg" type="checkbox">
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="field-grid two">
+        <div class="field">
+          <label for="bgColor">Background Color</label>
+          <div class="color-wrap">
+            <input id="bgColor" type="color" value="#ffffff">
+            <input id="bgHex" type="text" value="#ffffff" maxlength="7">
+          </div>
+        </div>
+        <div class="field">
+          <label for="bgUpload">Upload Background</label>
+          <input id="bgUpload" type="file" accept="image/*">
+        </div>
+      </div>
+
+      <div class="switch-row">
+        <div>
+          <strong>Auto Studio Enhance</strong>
+          <small>Clarity, brightness, contrast & sharpness</small>
+        </div>
+        <label class="switch">
+          <input id="autoEnhance" type="checkbox" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="field-grid three compact">
+        <div class="field"><label>Brightness</label><input id="brightness" type="range" min="70" max="135" value="104"></div>
+        <div class="field"><label>Contrast</label><input id="contrast" type="range" min="70" max="140" value="108"></div>
+        <div class="field"><label>Sharpness</label><input id="sharpness" type="range" min="0" max="100" value="24"></div>
+      </div>
+
+      <button id="createBtn" class="primary-btn" disabled>✨ Create Digital Photo</button>
+      <div id="status" class="status">Select a photo to begin.</div>
+    </section>
+
+    <section class="panel preview-panel">
+      <div class="preview-head">
+        <div>
+          <h2>Live Preview</h2>
+          <p id="previewInfo">35 × 45 mm • 300 DPI</p>
+        </div>
+        <button id="resetBtn" class="ghost-btn" disabled>Reset</button>
+      </div>
+
+      <div class="preview-stage">
+        <div id="placeholder" class="placeholder">
+          <div>🖼️</div>
+          <strong>Your photo preview will appear here</strong>
+          <small>Upload a portrait photo for best result</small>
+        </div>
+        <canvas id="photoCanvas" class="hidden"></canvas>
+      </div>
+
+      <div class="result-tabs hidden" id="resultTabs">
+        <button class="tab active" data-tab="single">Digital Photo</button>
+        <button class="tab" data-tab="sheet">Print Sheet</button>
+      </div>
+
+      <div class="actions hidden" id="actions">
+        <button id="downloadJpg" class="secondary-btn">Download JPG</button>
+        <button id="downloadPng" class="secondary-btn">Download PNG</button>
+        <button id="downloadSheet" class="secondary-btn">Download Print Sheet</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Designed by: <strong>Nirajan Aryal</strong></span>
+    <span class="sep">|</span>
+    <a href="tel:9851113811">9851113811</a>
+    <span class="sep">|</span>
+    <a href="https://www.facebook.com/nirajan.aryal.92" target="_blank" rel="noopener noreferrer">Facebook: nirajan.aryal.92</a>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
