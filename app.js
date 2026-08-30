@@ -4,7 +4,11 @@ const photoInput = $('photoInput');
 const photoCanvas = $('photoCanvas');
 const ctx = photoCanvas.getContext('2d', { willReadFrequently:true });
 let sourceImage = null;
+let sourceBlob = null;
 let bgImage = null;
+let removedBgImage = null;
+let removedBgUrl = null;
+let removalPromise = null;
 let lastSingleCanvas = null;
 let lastSheetCanvas = null;
 let currentTab = 'single';
@@ -23,22 +27,45 @@ function getPhotoSize(){
   if($('photoSize').value === 'custom') return [Number($('customWidth').value)||35, Number($('customHeight').value)||45];
   return sizePresets[$('photoSize').value];
 }
-function setStatus(text, ok=false){ $('status').textContent=text; $('status').style.color=ok?'#0f8a4b':'#6b7280'; }
+function setStatus(text, ok=false, error=false){
+  $('status').textContent=text;
+  $('status').style.color=error?'#c62828':(ok?'#0f8a4b':'#6b7280');
+}
 function updateInfo(){ const [w,h]=getPhotoSize(); $('previewInfo').textContent=`${w} × ${h} mm • ${DPI} DPI`; }
+function revokeRemovedBg(){
+  if(removedBgUrl) URL.revokeObjectURL(removedBgUrl);
+  removedBgUrl=null; removedBgImage=null; removalPromise=null;
+}
+function loadImageFromUrl(url){
+  return new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=url;});
+}
 
 photoInput.addEventListener('change', async e=>{
   const file=e.target.files?.[0]; if(!file) return;
-  const img=new Image(); img.onload=()=>{ sourceImage=img; $('createBtn').disabled=false; $('resetBtn').disabled=false; $('placeholder').classList.add('hidden'); renderSingle(); setStatus('Photo loaded. Adjust settings or create digital photo.', true); };
-  img.src=URL.createObjectURL(file);
+  sourceBlob=file;
+  revokeRemovedBg();
+  const url=URL.createObjectURL(file);
+  try{
+    sourceImage=await loadImageFromUrl(url);
+    $('createBtn').disabled=false; $('resetBtn').disabled=false; $('placeholder').classList.add('hidden');
+    renderSingle(); setStatus('Photo loaded. Adjust settings or create digital photo.', true);
+    if($('removeBg').checked) await ensureBackgroundRemoved();
+  } finally { URL.revokeObjectURL(url); }
 });
 
-$('bgUpload').addEventListener('change', e=>{
+$('bgUpload').addEventListener('change', async e=>{
   const file=e.target.files?.[0]; if(!file){bgImage=null;renderSingle();return;}
-  const img=new Image(); img.onload=()=>{bgImage=img;renderSingle();}; img.src=URL.createObjectURL(file);
+  const url=URL.createObjectURL(file);
+  try{ bgImage=await loadImageFromUrl(url); renderSingle(); }
+  finally{ URL.revokeObjectURL(url); }
 });
 
 $('photoSize').addEventListener('change',()=>{$('customSizeBox').classList.toggle('hidden',$('photoSize').value!=='custom');updateInfo();renderSingle();});
-['customWidth','customHeight','paperSize','removeBg','autoEnhance','brightness','contrast','sharpness'].forEach(id=>$(id).addEventListener('input',()=>{updateInfo();renderSingle();}));
+['customWidth','customHeight','paperSize','autoEnhance','brightness','contrast','sharpness'].forEach(id=>$(id).addEventListener('input',()=>{updateInfo();renderSingle();}));
+$('removeBg').addEventListener('change', async ()=>{
+  if($('removeBg').checked && sourceImage) await ensureBackgroundRemoved();
+  else renderSingle();
+});
 $('bgColor').addEventListener('input',()=>{$('bgHex').value=$('bgColor').value;renderSingle();});
 $('bgHex').addEventListener('change',()=>{if(/^#[0-9a-fA-F]{6}$/.test($('bgHex').value)){$('bgColor').value=$('bgHex').value;renderSingle();}});
 
@@ -47,15 +74,44 @@ function coverRect(img, w, h){
   return [(w-dw)/2,(h-dh)/2,dw,dh];
 }
 
-function applySimpleBackgroundRemoval(canvas){
-  // Browser-only fast remover intended for plain/solid studio backgrounds.
-  const c=canvas.getContext('2d',{willReadFrequently:true}); const im=c.getImageData(0,0,canvas.width,canvas.height); const d=im.data;
-  const samples=[]; const pts=[[2,2],[canvas.width-3,2],[2,canvas.height-3],[canvas.width-3,canvas.height-3]];
-  for(const [x,y] of pts){const i=(y*canvas.width+x)*4;samples.push([d[i],d[i+1],d[i+2]]);} 
-  const bg=samples.reduce((a,p)=>[a[0]+p[0],a[1]+p[1],a[2]+p[2]],[0,0,0]).map(v=>v/samples.length);
-  const threshold=70;
-  for(let i=0;i<d.length;i+=4){const dist=Math.hypot(d[i]-bg[0],d[i+1]-bg[1],d[i+2]-bg[2]); if(dist<threshold){d[i+3]=Math.max(0,Math.min(255,(dist/threshold)*255));}}
-  c.putImageData(im,0,0);
+async function ensureBackgroundRemoved(){
+  if(!$('removeBg').checked || !sourceBlob || !sourceImage) return;
+  if(removedBgImage) { renderSingle(); return; }
+  if(removalPromise) return removalPromise;
+
+  $('createBtn').disabled=true;
+  setStatus('AI Background Remover loading… first use may download the model.');
+
+  removalPromise=(async()=>{
+    try{
+      const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');
+      const removeBackground=mod.default || mod.removeBackground;
+      if(typeof removeBackground!=='function') throw new Error('Background remover module did not load.');
+      const resultBlob=await removeBackground(sourceBlob, {
+        model:'isnet',
+        output:{format:'image/png', quality:1},
+        progress:(key,current,total)=>{
+          if(total>0){
+            const pct=Math.max(0,Math.min(100,Math.round((current/total)*100)));
+            setStatus(`AI Background Remover: ${pct}% • ${String(key).replace(':',' ')}`);
+          }
+        }
+      });
+      revokeRemovedBg();
+      removedBgUrl=URL.createObjectURL(resultBlob);
+      removedBgImage=await loadImageFromUrl(removedBgUrl);
+      setStatus('Background removed successfully. Select a background and create the photo.', true);
+      renderSingle();
+    }catch(err){
+      console.error(err);
+      removedBgImage=null;
+      setStatus('AI background removal failed. Check internet connection and reload once.', false, true);
+    }finally{
+      removalPromise=null;
+      $('createBtn').disabled=!sourceImage;
+    }
+  })();
+  return removalPromise;
 }
 
 function sharpenCanvas(canvas, amount){
@@ -72,13 +128,14 @@ function renderSingle(){
   const [mmW,mmH]=getPhotoSize(), w=mmToPx(mmW), h=mmToPx(mmH);
   const out=document.createElement('canvas'); out.width=w; out.height=h; const oc=out.getContext('2d');
   if(bgImage){ const r=coverRect(bgImage,w,h); oc.drawImage(bgImage,...r); } else { oc.fillStyle=$('bgColor').value; oc.fillRect(0,0,w,h); }
+
   const person=document.createElement('canvas'); person.width=w; person.height=h; const pc=person.getContext('2d');
-  const r=coverRect(sourceImage,w,h);
+  const activeImage=($('removeBg').checked && removedBgImage) ? removedBgImage : sourceImage;
+  const r=coverRect(activeImage,w,h);
   const br=$('autoEnhance').checked?Number($('brightness').value):100;
   const ct=$('autoEnhance').checked?Number($('contrast').value):100;
   pc.filter=`brightness(${br}%) contrast(${ct}%) saturate(102%)`;
-  pc.drawImage(sourceImage,...r); pc.filter='none';
-  if($('removeBg').checked) applySimpleBackgroundRemoval(person);
+  pc.drawImage(activeImage,...r); pc.filter='none';
   if($('autoEnhance').checked) sharpenCanvas(person,Number($('sharpness').value));
   oc.drawImage(person,0,0);
   lastSingleCanvas=out;
@@ -99,7 +156,12 @@ function renderSheet(){
   lastSheetCanvas=sheet; showCanvas(sheet); setStatus(`${cols*rows} photos arranged automatically on selected paper.`,true);
 }
 
-$('createBtn').addEventListener('click',()=>{renderSingle();renderSheet();currentTab='single';showCanvas(lastSingleCanvas);document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab==='single'));$('resultTabs').classList.remove('hidden');$('actions').classList.remove('hidden');setStatus('Digital photo created successfully.',true);});
+$('createBtn').addEventListener('click',async()=>{
+  if($('removeBg').checked) await ensureBackgroundRemoved();
+  renderSingle();renderSheet();currentTab='single';showCanvas(lastSingleCanvas);
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab==='single'));
+  $('resultTabs').classList.remove('hidden');$('actions').classList.remove('hidden');setStatus('Digital photo created successfully.',true);
+});
 
 document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{currentTab=btn.dataset.tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===btn));if(currentTab==='single')showCanvas(lastSingleCanvas);else renderSheet();}));
 
@@ -108,5 +170,9 @@ $('downloadJpg').onclick=()=>downloadCanvas(lastSingleCanvas,'image/jpeg','digit
 $('downloadPng').onclick=()=>downloadCanvas(lastSingleCanvas,'image/png','digital-photo-300dpi.png');
 $('downloadSheet').onclick=()=>downloadCanvas(lastSheetCanvas,'image/jpeg','digital-photo-print-sheet.jpg');
 
-$('resetBtn').addEventListener('click',()=>{sourceImage=null;bgImage=null;photoInput.value='';$('bgUpload').value='';$('createBtn').disabled=true;$('resetBtn').disabled=true;$('placeholder').classList.remove('hidden');photoCanvas.classList.add('hidden');$('resultTabs').classList.add('hidden');$('actions').classList.add('hidden');setStatus('Select a photo to begin.');});
+$('resetBtn').addEventListener('click',()=>{
+  sourceImage=null;sourceBlob=null;bgImage=null;revokeRemovedBg();photoInput.value='';$('bgUpload').value='';
+  $('createBtn').disabled=true;$('resetBtn').disabled=true;$('placeholder').classList.remove('hidden');photoCanvas.classList.add('hidden');
+  $('resultTabs').classList.add('hidden');$('actions').classList.add('hidden');setStatus('Select a photo to begin.');
+});
 updateInfo();
