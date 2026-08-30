@@ -18,7 +18,7 @@
       <div class="brand-icon">📸</div>
       <div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div>
     </div>
-    <div class="badge">v1.2</div>
+    <div class="badge">v1.2.2</div>
   </header>
 
   <div class="global-toolbar" id="globalToolbar">
@@ -37,6 +37,22 @@
         <span class="upload-icon">＋</span><strong>Select Photo</strong><small>Camera, Gallery or File</small>
         <span id="selectedFileName" class="selected-file">No photo selected</span>
       </label>
+
+      <div class="field">
+        <label for="nepalPreset">Nepal Form Preset</label>
+        <select id="nepalPreset">
+          <option value="manual">Manual / Standard Size</option>
+          <option value="general35x45">Nepal General Form – 35 × 45 mm</option>
+          <option value="passport35x45">Nepal Passport / Travel Form – 35 × 45 mm</option>
+          <option value="citizenship35x45">Citizenship / ID Type – 35 × 45 mm</option>
+          <option value="loksewa35x45">Lok Sewa / Online Application – 35 × 45 mm</option>
+          <option value="bank35x45">Bank / KYC – 35 × 45 mm</option>
+          <option value="school35x45">School / College Form – 35 × 45 mm</option>
+          <option value="licence35x45">Driving Licence Type – 35 × 45 mm</option>
+          <option value="custom">Custom Nepal Form Size</option>
+        </select>
+        <small class="field-help">Common print presets. Use Custom when a form specifies a different size.</small>
+      </div>
 
       <div class="field-grid two">
         <div class="field"><label for="photoSize">Standard Photo Size</label><select id="photoSize">
@@ -68,7 +84,13 @@
 
     <section class="panel editor-panel">
       <div class="preview-head"><div><h2>Live Preview</h2><p id="previewInfo">35 × 45 mm • 300 DPI</p></div><button id="resetBtn" class="ghost-btn" disabled>Reset</button></div>
-      <div class="editor-toolbar"><button data-action="centerH">↔ Center</button><button data-action="centerV">↕ Center</button><button data-action="fit">Fit</button><button data-action="fill">Fill</button><button data-action="rotateLeft">↶ 90°</button><button data-action="rotateRight">↷ 90°</button><button data-action="flipX">⇋ Flip</button><button data-action="forward">Bring Front</button><button data-action="backward">Send Back</button></div>
+      <div class="editor-toolbar">
+        <button data-action="crop">✂ Crop Selection</button>
+        <button id="applyCropBtn" class="crop-only hidden" data-action="applyCrop">✓ Apply Crop</button>
+        <button id="cancelCropBtn" class="crop-only hidden" data-action="cancelCrop">✕ Cancel Crop</button>
+        <button data-action="delete" class="danger-tool">🗑 Delete Layer</button>
+        <button data-action="centerH">↔ Center</button><button data-action="centerV">↕ Center</button><button data-action="fit">Fit</button><button data-action="fill">Fill</button><button data-action="rotateLeft">↶ 90°</button><button data-action="rotateRight">↷ 90°</button><button data-action="flipX">⇋ Flip</button><button data-action="forward">Bring Front</button><button data-action="backward">Send Back</button>
+      </div>
       <div class="preview-stage" id="previewStage"><div id="placeholder" class="placeholder"><div>🖼️</div><strong>Your photo preview will appear here</strong><small>Upload a portrait photo for best result</small></div><div id="canvasWrap" class="canvas-wrap hidden"><canvas id="editorCanvas"></canvas></div></div>
 
       <div class="result-tabs hidden" id="resultTabs"><button class="tab active" data-tab="editor">Digital Photo</button><button class="tab" data-tab="sheet">Print Sheet</button></div>
