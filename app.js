@@ -56,6 +56,13 @@ async function normalizeImageFile(file){
   return {dataUrl:data,width,height,previewWidth:outW,previewHeight:outH};
 }
 function blobToDataURL(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)})}
+function canvasToBlob(canvas,type='image/png',quality=.96){return new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error('Canvas blob failed')),type,quality))}
+async function prepareAiInputBlob(dataUrl,maxDim=1600){
+  const img=await imageFromUrl(dataUrl),sw=img.naturalWidth||img.width,sh=img.naturalHeight||img.height,sc=Math.min(1,maxDim/Math.max(sw,sh));
+  const w=Math.max(1,Math.round(sw*sc)),h=Math.max(1,Math.round(sh*sc)),c=document.createElement('canvas');c.width=w;c.height=h;
+  const x=c.getContext('2d',{alpha:false});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(img,0,0,w,h);
+  return canvasToBlob(c,'image/jpeg',.94);
+}
 
 function bindCanvasEvents(){
   fabricCanvas.on('selection:created',refreshLayers);fabricCanvas.on('selection:updated',refreshLayers);fabricCanvas.on('selection:cleared',refreshLayers);
@@ -64,9 +71,44 @@ function bindCanvasEvents(){
 function initCanvas(){const [W,H]=editorDims();if(fabricCanvas)fabricCanvas.dispose();fabricCanvas=new Fabric.Canvas('editorCanvas',{width:W,height:H,preserveObjectStacking:true,selection:false,enableRetinaScaling:true});fabricCanvas.getContext().imageSmoothingEnabled=true;fabricCanvas.getContext().imageSmoothingQuality='high';bindCanvasEvents();backgroundRect=new Fabric.Rect({left:0,top:0,width:W,height:H,fill:$('bgColor').value,selectable:false,evented:false,name:'Background Color',layerType:'backgroundColor'});fabricCanvas.add(backgroundRect);fabricCanvas.sendToBack(backgroundRect);updateBorderPreview()}
 function makeFabricImage(img,name,type){return new Fabric.Image(img,{name,layerType:type,transparentCorners:false,cornerColor:'#0b5ed7',cornerStrokeColor:'#fff',borderColor:'#0b5ed7',cornerSize:11,padding:2,centeredScaling:false,originX:'center',originY:'center'})}
 function placeCover(obj){const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.max(W/obj.width,H/obj.height);obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0});obj.setCoords()}
-function placeSubject(obj){const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.min(W/obj.width,H/obj.height)*.92;obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0});obj.setCoords()}
+function placeSubject(obj){const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.max(W/obj.width,H/obj.height);obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0});obj.setCoords()}
 function relinkObjects(){const objs=fabricCanvas?.getObjects()||[];backgroundRect=objs.find(o=>o.layerType==='backgroundColor')||null;backgroundObj=objs.find(o=>o.layerType==='backgroundImage')||null;subjectObj=objs.find(o=>o.layerType==='subject')||null;applyPhotoBorder(false)}
-async function setSubjectFromDataUrl(dataUrl,name='Photo'){const img=await imageFromUrl(dataUrl);if(subjectObj)fabricCanvas.remove(subjectObj);subjectObj=makeFabricImage(img,name,'subject');placeSubject(subjectObj);fabricCanvas.add(subjectObj);fabricCanvas.setActiveObject(subjectObj);applyEnhance(false);applyPhotoBorder(false);fabricCanvas.requestRenderAll();refreshLayers();syncFaceGuide()}
+function captureSubjectPlacement(obj){
+  if(!obj)return null;
+  const c=obj.getCenterPoint();
+  return {
+    centerX:c.x,centerY:c.y,
+    renderedW:Math.abs((obj.width||1)*(obj.scaleX||1)),
+    renderedH:Math.abs((obj.height||1)*(obj.scaleY||1)),
+    sourceW:obj.width||1,sourceH:obj.height||1,angle:obj.angle||0,flipX:!!obj.flipX,flipY:!!obj.flipY,
+    skewX:obj.skewX||0,skewY:obj.skewY||0,opacity:obj.opacity==null?1:obj.opacity,visible:obj.visible!==false,
+    clipPath:obj.clipPath?obj.clipPath.toObject(['absolutePositioned']):null
+  };
+}
+function enlivenObject(serialized){return new Promise(resolve=>{if(!serialized)return resolve(null);Fabric.util.enlivenObjects([serialized],objs=>resolve(objs?.[0]||null))})}
+async function restoreSubjectPlacement(obj,placement){
+  if(!obj||!placement)return false;
+  obj.set({originX:'center',originY:'center',left:placement.centerX,top:placement.centerY,
+    scaleX:placement.renderedW/Math.max(1,obj.width||1),scaleY:placement.renderedH/Math.max(1,obj.height||1),
+    angle:placement.angle,flipX:placement.flipX,flipY:placement.flipY,skewX:placement.skewX,skewY:placement.skewY,
+    opacity:placement.opacity,visible:placement.visible});
+  if(placement.clipPath){
+    const cp=await enlivenObject(placement.clipPath);
+    if(cp){
+      const rx=(obj.width||1)/Math.max(1,placement.sourceW||1),ry=(obj.height||1)/Math.max(1,placement.sourceH||1);
+      if(typeof cp.left==='number')cp.left*=rx;if(typeof cp.top==='number')cp.top*=ry;
+      if(typeof cp.width==='number')cp.width*=rx;if(typeof cp.height==='number')cp.height*=ry;
+      obj.set('clipPath',cp);
+    }
+  }
+  obj.setCoords();return true;
+}
+async function setSubjectFromDataUrl(dataUrl,name='Photo',options={}){
+  const preserve=options.preservePlacement!==false,placement=preserve?captureSubjectPlacement(subjectObj):null;
+  const img=await imageFromUrl(dataUrl);if(subjectObj)fabricCanvas.remove(subjectObj);subjectObj=makeFabricImage(img,name,'subject');
+  if(!(await restoreSubjectPlacement(subjectObj,placement)))placeSubject(subjectObj);
+  fabricCanvas.add(subjectObj);fabricCanvas.setActiveObject(subjectObj);applyEnhance(false);applyPhotoBorder(false);fabricCanvas.requestRenderAll();refreshLayers();syncFaceGuide();
+}
 
 function uiState(){return {nepalPreset:$('nepalPreset').value,photoSize:$('photoSize').value,customWidth:$('customWidth').value,customHeight:$('customHeight').value,bgColor:$('bgColor').value,bgHex:$('bgHex').value,autoEnhance:$('autoEnhance').checked,brightness:$('brightness').value,contrast:$('contrast').value,saturation:$('saturation').value,outputDpi:$('outputDpi').value,borderEnabled:$('borderEnabled').checked,borderSize:$('borderSize').value,borderColor:$('borderColor').value,borderHex:$('borderHex').value}}
 function applyUiState(s={}){restoringHistory=true;Object.entries(s).forEach(([k,v])=>{const el=$(k);if(!el)return;if(el.type==='checkbox')el.checked=!!v;else el.value=v});$('customSizeBox').classList.toggle('hidden',$('photoSize').value!=='custom');updateInfo();updateBorderPreview();restoringHistory=false}
@@ -139,13 +181,15 @@ async function removeBackgroundNow(){
     setProcessingUI(5,'Loading AI engine…');
     const mod=await import('https://esm.sh/@imgly/background-removal@1.7.0?bundle');
     const removeBackground=mod.default||mod.removeBackground;
-    setProcessingUI(12,'Preparing AI model…');
-    removedBlob=await removeBackground(sourceFile,{
+    setProcessingUI(10,'Optimizing photo for AI…');
+    const aiInput=await prepareAiInputBlob(sourceDataUrl,1600);
+    setProcessingUI(14,'Preparing AI model…');
+    removedBlob=await removeBackground(aiInput,{
       model:'isnet',
       progress:(key,current,total)=>{
         if(total){
           const raw=Math.max(0,Math.min(100,current/total*100));
-          const mapped=Math.round(12+raw*.73);
+          const mapped=Math.round(14+raw*.70);
           const label=String(key||'AI processing').replace(/[-_]/g,' ');
           setProcessingUI(mapped,`${label}…`);
           status(`Background remover: ${label} ${Math.round(raw)}%`);
@@ -154,9 +198,11 @@ async function removeBackgroundNow(){
     });
     setProcessingUI(88,'Building transparent subject…');
     const dataUrl=await blobToDataURL(removedBlob);
-    setProcessingUI(90,'Matching final photo frame…');
-    workingBaseDataUrl=await fitCutoutToFinalFrame(dataUrl);
-    setProcessingUI(92,'Applying studio cleanup…');
+    setProcessingUI(91,'Preserving crop and face position…');
+    // Keep the cut-out bitmap transparent and preserve the exact editor transform.
+    // Never contain/fit the person again after background removal.
+    workingBaseDataUrl=dataUrl;
+    setProcessingUI(93,'Applying studio cleanup…');
     retouchedDataUrl=await naturalRetouchDataUrl(workingBaseDataUrl);
     displayingBefore=false;
     setProcessingUI(96,'Updating editor layers…');
@@ -411,31 +457,17 @@ photoSize=function(){
   return [customSizeToMm($('customWidth')?.value||35,u),customSizeToMm($('customHeight')?.value||45,u)];
 };
 
-// Normal uploaded photographs cover the complete final frame. A true cut-out
-// subject remains fitted inside the frame because its background is transparent.
+// Crop-first composition: every photo/transparent cut-out uses the same final-frame transform.
+// Background removal must never re-fit or shrink the person.
 placeSubject=function(obj){
   if(!fabricCanvas||!obj)return;
-  const W=fabricCanvas.width,H=fabricCanvas.height;
-  const isCutout=!!removedBlob;
-  // BG-removed subjects are first placed on a transparent canvas with the
-  // exact final-photo aspect ratio. Keep that whole transparent frame aligned
-  // with the editor frame; never stretch the person itself.
-  const sc=isCutout?Math.min(W/obj.width,H/obj.height):Math.max(W/obj.width,H/obj.height);
+  const W=fabricCanvas.width,H=fabricCanvas.height,sc=Math.max(W/obj.width,H/obj.height);
   obj.set({scaleX:sc,scaleY:sc,left:W/2,top:H/2,angle:0,originX:'center',originY:'center'});obj.setCoords();
 };
 
-async function fitCutoutToFinalFrame(dataUrl){
-  if(!fabricCanvas)return dataUrl;
-  const img=await imageFromUrl(dataUrl),W=Math.max(1,Math.round(fabricCanvas.width)),H=Math.max(1,Math.round(fabricCanvas.height));
-  const c=document.createElement('canvas');c.width=W;c.height=H;
-  const x=c.getContext('2d',{alpha:true});x.clearRect(0,0,W,H);x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';
-  // Preserve person proportions. The transparent bitmap itself is exactly the
-  // final photo frame, while the cut-out person is contained naturally inside.
-  const sc=Math.min(W/(img.naturalWidth||img.width),H/(img.naturalHeight||img.height))*.92;
-  const dw=(img.naturalWidth||img.width)*sc,dh=(img.naturalHeight||img.height)*sc;
-  x.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
-  return c.toDataURL('image/png',1);
-}
+// Kept only for backward compatibility with older snapshots/calls. v2.5 no longer
+// creates a second transparent frame around the subject.
+async function fitCutoutToFinalFrame(dataUrl){return dataUrl}
 function syncBackgroundFrame(){
   if(!fabricCanvas||!backgroundRect)return;
   backgroundRect.set({left:0,top:0,width:fabricCanvas.width,height:fabricCanvas.height,scaleX:1,scaleY:1,angle:0,originX:'left',originY:'top'});
