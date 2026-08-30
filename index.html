@@ -9,43 +9,31 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand-wrap">
-      <div class="brand-icon">📸</div>
-      <div>
-        <h1>Digital Photo Studio</h1>
-        <p>Professional Passport & Studio Photo Maker</p>
-      </div>
-    </div>
-    <div class="badge">v1.1</div>
+    <div class="brand-wrap"><div class="brand-icon">📸</div><div><h1>Digital Photo Studio</h1><p>Professional Passport & Studio Photo Maker</p></div></div>
+    <div class="badge">v1.1.1</div>
   </header>
 
   <main class="studio-shell">
     <aside class="panel controls-panel">
       <h2>Photo Settings</h2>
       <label class="upload-box" for="photoInput">
-        <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
+        <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/*" hidden>
         <span class="upload-icon">＋</span><strong>Select Photo</strong><small>Camera, Gallery or File</small>
+        <span id="selectedFileName" class="selected-file">No photo selected</span>
       </label>
 
       <div class="field-grid two">
         <div class="field"><label for="photoSize">Standard Photo Size</label><select id="photoSize">
-          <option value="35x45">Passport 35 × 45 mm</option><option value="51x51">US Visa 2 × 2 inch</option>
-          <option value="25x30">25 × 30 mm</option><option value="30x40">30 × 40 mm</option>
-          <option value="33x48">33 × 48 mm</option><option value="50x50">50 × 50 mm</option><option value="custom">Custom Size</option>
+          <option value="35x45">Passport 35 × 45 mm</option><option value="51x51">US Visa 2 × 2 inch</option><option value="25x30">25 × 30 mm</option><option value="30x40">30 × 40 mm</option><option value="33x48">33 × 48 mm</option><option value="50x50">50 × 50 mm</option><option value="custom">Custom Size</option>
         </select></div>
-        <div class="field"><label for="paperSize">Paper Size</label><select id="paperSize">
-          <option value="4x6">4 × 6 inch</option><option value="5x7">5 × 7 inch</option><option value="6x8">6 × 8 inch</option>
-          <option value="8x10">8 × 10 inch</option><option value="a4">A4</option><option value="a5">A5</option>
-        </select></div>
+        <div class="field"><label for="paperSize">Paper Size</label><select id="paperSize"><option value="4x6">4 × 6 inch</option><option value="5x7">5 × 7 inch</option><option value="6x8">6 × 8 inch</option><option value="8x10">8 × 10 inch</option><option value="a4">A4</option><option value="a5">A5</option></select></div>
       </div>
-      <div id="customSizeBox" class="field-grid two hidden">
-        <div class="field"><label>Width (mm)</label><input id="customWidth" type="number" min="10" max="200" value="35"></div>
-        <div class="field"><label>Height (mm)</label><input id="customHeight" type="number" min="10" max="200" value="45"></div>
-      </div>
+      <div id="customSizeBox" class="field-grid two hidden"><div class="field"><label>Width (mm)</label><input id="customWidth" type="number" min="10" max="200" value="35"></div><div class="field"><label>Height (mm)</label><input id="customHeight" type="number" min="10" max="200" value="45"></div></div>
 
       <div class="switch-row"><div><strong>Background Remover</strong><small>Remove background and create Subject layer</small></div><label class="switch"><input id="removeBg" type="checkbox"><span class="slider"></span></label></div>
 
@@ -55,57 +43,23 @@
       </div>
 
       <div class="switch-row"><div><strong>Auto Studio Enhance</strong><small>Brightness, contrast & clarity</small></div><label class="switch"><input id="autoEnhance" type="checkbox" checked><span class="slider"></span></label></div>
-      <div class="field-grid three compact">
-        <div class="field"><label>Brightness</label><input id="brightness" type="range" min="70" max="135" value="104"></div>
-        <div class="field"><label>Contrast</label><input id="contrast" type="range" min="70" max="140" value="108"></div>
-        <div class="field"><label>Saturation</label><input id="saturation" type="range" min="70" max="135" value="102"></div>
-      </div>
+      <div class="field-grid three compact"><div class="field"><label>Brightness</label><input id="brightness" type="range" min="70" max="135" value="104"></div><div class="field"><label>Contrast</label><input id="contrast" type="range" min="70" max="140" value="108"></div><div class="field"><label>Saturation</label><input id="saturation" type="range" min="70" max="135" value="102"></div></div>
 
-      <div class="field-grid two">
-        <div class="field"><label for="copies">Copies</label><select id="copies"><option value="auto">Auto Fit</option><option>1</option><option>2</option><option>4</option><option>6</option><option>8</option><option>9</option><option>12</option><option>16</option><option>20</option><option>24</option></select></div>
-        <div class="field"><label for="orientation">Paper Orientation</label><select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></div>
-      </div>
+      <div class="field-grid two"><div class="field"><label for="copies">Copies</label><select id="copies"><option value="auto">Auto Fit</option><option>1</option><option>2</option><option>4</option><option>6</option><option>8</option><option>9</option><option>12</option><option>16</option><option>20</option><option>24</option></select></div><div class="field"><label for="orientation">Paper Orientation</label><select id="orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></div></div>
 
-      <button id="createBtn" class="primary-btn" disabled>✨ Create Digital Photo</button>
-      <div id="status" class="status">Select a photo to begin.</div>
+      <button id="createBtn" class="primary-btn" disabled>✨ Create Digital Photo</button><div id="status" class="status">Select a photo to begin.</div>
     </aside>
 
     <section class="panel editor-panel">
-      <div class="preview-head"><div><h2>Layer Editor</h2><p id="previewInfo">35 × 45 mm • 300 DPI</p></div><button id="resetBtn" class="ghost-btn" disabled>Reset</button></div>
+      <div class="preview-head"><div><h2>Live Preview</h2><p id="previewInfo">35 × 45 mm • 300 DPI</p></div><button id="resetBtn" class="ghost-btn" disabled>Reset</button></div>
+      <div class="editor-toolbar"><button data-action="centerH">↔ Center</button><button data-action="centerV">↕ Center</button><button data-action="fit">Fit</button><button data-action="fill">Fill</button><button data-action="rotateLeft">↶ 90°</button><button data-action="rotateRight">↷ 90°</button><button data-action="flipX">⇋ Flip</button><button data-action="forward">Bring Front</button><button data-action="backward">Send Back</button></div>
+      <div class="preview-stage" id="previewStage"><div id="placeholder" class="placeholder"><div>🖼️</div><strong>Your photo preview will appear here</strong><small>Upload a portrait photo for best result</small></div><div id="canvasWrap" class="canvas-wrap hidden"><canvas id="editorCanvas"></canvas></div></div>
+      <div class="result-tabs hidden" id="resultTabs"><button class="tab active" data-tab="editor">Digital Photo</button><button class="tab" data-tab="sheet">Print Sheet</button></div><div id="sheetPreviewWrap" class="sheet-preview hidden"><canvas id="sheetCanvas"></canvas></div><div class="actions hidden" id="actions"><button id="downloadJpg" class="secondary-btn">Download JPG</button><button id="downloadPng" class="secondary-btn">Download PNG</button><button id="downloadSheet" class="secondary-btn">Download Print Sheet</button></div>
 
-      <div class="editor-toolbar">
-        <button data-action="centerH" title="Center horizontally">↔ Center</button><button data-action="centerV" title="Center vertically">↕ Center</button>
-        <button data-action="fit" title="Fit selected layer">Fit</button><button data-action="fill" title="Fill canvas">Fill</button>
-        <button data-action="rotateLeft">↶ 90°</button><button data-action="rotateRight">↷ 90°</button><button data-action="flipX">⇋ Flip</button>
-        <button data-action="forward">Bring Front</button><button data-action="backward">Send Back</button>
-      </div>
-
-      <div class="preview-stage" id="previewStage">
-        <div id="placeholder" class="placeholder"><div>🖼️</div><strong>Your photo preview will appear here</strong><small>Upload a portrait photo for best result</small></div>
-        <div id="canvasWrap" class="canvas-wrap hidden"><canvas id="editorCanvas"></canvas></div>
-      </div>
-
-      <div class="result-tabs hidden" id="resultTabs"><button class="tab active" data-tab="editor">Editor</button><button class="tab" data-tab="sheet">Print Sheet</button></div>
-      <div id="sheetPreviewWrap" class="sheet-preview hidden"><canvas id="sheetCanvas"></canvas></div>
-      <div class="actions hidden" id="actions"><button id="downloadJpg" class="secondary-btn">Download JPG</button><button id="downloadPng" class="secondary-btn">Download PNG</button><button id="downloadSheet" class="secondary-btn">Download Print Sheet</button></div>
+      <div class="layers-panel-inline"><div class="layers-title"><div><h3>Layers</h3><small>Select a layer, then drag / resize / rotate in preview</small></div></div><div id="layersList" class="layers-list"><div class="empty-layers">No layers yet</div></div></div>
     </section>
-
-    <aside class="panel layers-panel">
-      <div class="layers-title"><h2>Layers</h2><small>Click a layer to edit it</small></div>
-      <div id="layersList" class="layers-list">
-        <div class="empty-layers">No layers yet</div>
-      </div>
-      <div class="layer-help"><strong>Photoshop-style controls</strong><p>Drag = move • Corner = resize • Top handle = rotate • select layer to edit independently.</p></div>
-    </aside>
   </main>
 
-  <footer>
-    <span>Designed by: <strong>Nirajan Aryal</strong></span><span class="sep">|</span><a href="tel:9851113811">9851113811</a><span class="sep">|</span>
-    <a class="facebook-link" href="https://www.facebook.com/nirajan.aryal.92" target="_blank" rel="noopener noreferrer" aria-label="Facebook profile">
-      <svg class="facebook-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22 12.07C22 6.51 17.52 2 12 2S2 6.51 2 12.07C2 17.09 5.66 21.25 10.44 22v-7.03H7.9v-2.9h2.54V9.86c0-2.52 1.49-3.91 3.77-3.91 1.09 0 2.23.2 2.23.2v2.47h-1.25c-1.24 0-1.63.77-1.63 1.56v1.89h2.77l-.44 2.9h-2.33V22C18.34 21.25 22 17.09 22 12.07Z"/></svg><span>Facebook</span>
-    </a>
-  </footer>
-
-  <script type="module" src="app.js"></script>
+  <footer><span>Designed by: <strong>Nirajan Aryal</strong></span><span class="sep">|</span><a href="tel:9851113811">9851113811</a><span class="sep">|</span><a class="facebook-link" href="https://www.facebook.com/nirajan.aryal.92" target="_blank" rel="noopener noreferrer" aria-label="Facebook profile"><svg class="facebook-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22 12.07C22 6.51 17.52 2 12 2S2 6.51 2 12.07C2 17.09 5.66 21.25 10.44 22v-7.03H7.9v-2.9h2.54V9.86c0-2.52 1.49-3.91 3.77-3.91 1.09 0 2.23.2 2.23.2v2.47h-1.25c-1.24 0-1.63.77-1.63 1.56v1.89h2.77l-.44 2.9h-2.33V22C18.34 21.25 22 17.09 22 12.07Z"/></svg><span>Facebook</span></a></footer>
 </body>
 </html>
